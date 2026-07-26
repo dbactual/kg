@@ -864,6 +864,53 @@ static void gitlog_syntax(erow *row)
 	/* leave HL_NORMAL */
 }
 
+/* VC-dir highlighter (vc-mode *vc-dir* buffer).
+ *   summary lines ("Key : value")            → normal
+ *   directory header (25 leading spaces,     → cyan (whole line)
+ *      ends with '/')
+ *   file line (5 leading spaces, status word → tint the status word:
+ *      at col 5)                                edited=yellow, added=green,
+ *                                                removed/unregistered/conflict
+ *                                                =red, renamed/copied=magenta
+ */
+static void vcdir_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	int i, wstart, wend, color;
+
+	if (len <= 0) return;
+
+	/* Directory header: cols 0-24 blank, ends with '/'. */
+	if (len >= 2 && p[len-1] == '/') {
+		int lead_blank = 1;
+		for (i = 0; i < 25 && i < len; i++)
+			if (p[i] != ' ') { lead_blank = 0; break; }
+		if (lead_blank && i == 25) {
+			memset(row->hl, HL_COMMENT, len);
+			return;
+		}
+	}
+
+	/* File line: cols 0-4 blank, col 5 non-blank (status word). */
+	if (len > 5 && p[0]==' ' && p[1]==' ' && p[2]==' ' &&
+	    p[3]==' ' && p[4]==' ' && p[5] != ' ') {
+		wstart = 5;
+		wend = wstart;
+		while (wend < len && p[wend] != ' ') wend++;
+		color = HL_KEYWORD1;  /* yellow (edited) default */
+		if      (strncmp(p+wstart, "unregistered", 12) == 0) color = HL_NUMBER;   /* red */
+		else if (strncmp(p+wstart, "added",        5)  == 0) color = HL_KEYWORD2; /* green */
+		else if (strncmp(p+wstart, "removed",      7)  == 0) color = HL_NUMBER;   /* red */
+		else if (strncmp(p+wstart, "renamed",      7)  == 0) color = HL_STRING;   /* magenta */
+		else if (strncmp(p+wstart, "copied",       6)  == 0) color = HL_STRING;   /* magenta */
+		else if (strncmp(p+wstart, "conflict",     8)  == 0) color = HL_NUMBER;   /* red */
+		memset(row->hl + wstart, color, wend - wstart);
+		return;
+	}
+	/* summary & blank lines: HL_NORMAL */
+}
+
 /* Set every byte of row->hl (that corresponds to every character in the line)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
@@ -904,6 +951,11 @@ void editor_update_syntax(erow *row)
 
 	if (editor.syntax->flags & SHL_GITLOG) {
 		gitlog_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_VCDIR) {
+		vcdir_syntax(row);
 		return;
 	}
 

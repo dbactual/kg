@@ -31,6 +31,7 @@ const char *kg_help_lines[] = {
 	"│ M-g      goto line      │ M-x      named command  │ C-x v s  git status     │",
 	"│                         │                         │ C-x v d  git diff       │",
 	"│                         │                         │ C-x v l  git log        │",
+	"│                         │                         │ C-x v v  vc-dir         │",
 	"│                         │                         │ C-x f    set fill column│",
 	"├─────────────────────────┼─────────────────────────┼─────────────────────────┤",
 	"│ REGION & SELECTION      │ RECTANGLES              │ WINDOWS · SEARCH · MISC │",
