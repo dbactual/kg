@@ -597,6 +597,7 @@ int editor_row_has_open_comment(erow *row);
 void editor_update_syntax(erow *row);
 const char *editor_syntax_to_color(int hl);
 void editor_select_syntax_highlight(char *filename);
+int  syntax_path_matches_lang(const char *path, const char *lang);
 
 /* tty.c */
 void disable_raw_mode(int fd);

@@ -1376,3 +1376,25 @@ void editor_select_syntax_highlight(char *filename)
 	/* No extension match — try hash-bang on first line of file */
 	select_syntax_by_shebang(filename);
 }
+
+/* True if `path` would select the syntax named `lang` — i.e. its name
+ * matches one of that language's filematch patterns (extension suffix or
+ * substring).  Used by xref to filter which files on disk to scan. */
+int syntax_path_matches_lang(const char *path, const char *lang)
+{
+	unsigned int j;
+
+	for (j = 0; j < HLDB_ENTRIES; j++) {
+		struct editor_syntax *s = HLDB + j;
+		unsigned int i;
+		if (!s->name || strcmp(s->name, lang) != 0) continue;
+		for (i = 0; s->filematch[i]; i++) {
+			const char *pat = s->filematch[i];
+			int plen = (int)strlen(pat);
+			const char *p = strstr(path, pat);
+			if (p && (pat[0] != '.' || p[plen] == '\0'))
+				return 1;
+		}
+	}
+	return 0;
+}

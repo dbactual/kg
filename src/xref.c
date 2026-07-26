@@ -34,7 +34,7 @@ static struct editor_syntax xref_syntax = {
 /* A found definition.  file is a static buffer (overwritten per match);
  * xref_populate copies it into the buffer rows so it's fine to reuse. */
 struct xref_match {
-	const char *file;   /* buflist[i].filename or a static disk-file name */
+	char file[256];     /* buflist[i].filename or a disk path */
 	int  line;          /* 1-based */
 	char text[160];     /* the matching line, trimmed */
 };
@@ -322,21 +322,41 @@ static int xref_line_is_def(const char *line, int len, const char *name,
 	return 0;
 
 matched:
-	/* Heuristic to reject calls/declarations: if the line ends with ';'
-	 * it's a statement (a call or a forward declaration), not a definition
-	 * body — unless it's a #define / typedef, which the patterns above
-	 * already accepted and which legitimately end with ';'.  We only apply
-	 * the ';' reject to the paren-call shape.  Detect that by checking
-	 * whether the matched line contains a '(' used as a call. */
+	/* Reject indented lines that don't start with a definition keyword.
+	 * Top-level definitions (C functions, struct/enum, #define, typedef,
+	 * Rust fn/struct, Shell funcs) sit at column 0; call sites live inside
+	 * function bodies and are indented.  Keyword-prefixed forms (def/fn/
+	 * function/struct/enum/class/trait/impl/interface/typedef/#define/
+	 * static) are accepted at any indentation so Python methods and nested
+	 * Rust items still resolve. */
+	{
+		static const char *kw[] = {
+			"def", "fn", "function", "struct", "enum", "class",
+			"trait", "impl", "interface", "typedef", "#define",
+			"static", "public", "private", "protected", "final",
+			"inline", "extern", "const", NULL
+		};
+		if (line[0] == ' ' || line[0] == '\t') {
+			int p = 0, kw_i, is_kw = 0;
+			while (p < len && isspace((unsigned char)line[p])) p++;
+			for (kw_i = 0; kw[kw_i]; kw_i++) {
+				size_t kl = strlen(kw[kw_i]);
+				if (p + (int)kl <= len && memcmp(line + p, kw[kw_i], kl) == 0 &&
+				    (p + (int)kl == len || !isalnum((unsigned char)line[p+kl])))
+					{ is_kw = 1; break; }
+			}
+			if (!is_kw) return 0;
+		}
+	}
+	/* Reject lines ending with ';' that contain a parenthesised call — a
+	 * statement (call or forward declaration), not a definition body.
+	 * #define / typedef end with ';' legitimately but are matched by their
+	 * own keyword-prefixed patterns and would have is_kw above; the bare
+	 * ';' reject only bites the generic %w( shape. */
 	has_paren_call = 0;
 	for (i = 0; i < len; i++) if (line[i] == '(') { has_paren_call = 1; break; }
-	if (has_paren_call && len > 0 && line[len-1] == ';') {
-		/* could still be "typedef ... foo(int);" — only reject if the line
-		 * looks like an expression statement: contains '=' before the name
-		 * or the name( is not at statement start.  Keep it simple: reject
-		 * any ';' -ending line that has a '(' call. */
+	if (has_paren_call && len > 0 && line[len-1] == ';')
 		return 0;
-	}
 	return 1;
 }
 
@@ -355,7 +375,9 @@ static void xref_scan_buffer(int bufidx, const char *name, const char *lang)
 	if (!b->active || !b->row) return;
 	for (i = 0; i < b->numrows && xref_nmatches < XREF_MAX_MATCHES; i++) {
 		if (xref_line_is_def(b->row[i].chars, b->row[i].size, name, lang)) {
-			xref_matches[xref_nmatches].file = b->filename ? b->filename : "[new]";
+			snprintf(xref_matches[xref_nmatches].file,
+			         sizeof xref_matches[0].file, "%s",
+			         b->filename ? b->filename : "[new]");
 			xref_matches[xref_nmatches].line = i + 1;
 			{
 				int n = b->row[i].size, t = 0, s = 0;
@@ -367,6 +389,81 @@ static void xref_scan_buffer(int bufidx, const char *name, const char *lang)
 			xref_nmatches++;
 		}
 	}
+}
+
+/* Does `path` end with one of the current language's extension patterns?
+ * Delegates to syntax.c's matcher so xref stays in sync with HLDB. */
+#define xref_path_matches_lang(path, lang) syntax_path_matches_lang(path, lang)
+
+/* Read `path` line by line and collect definition matches.  Bounded by
+ * XREF_MAX_MATCHES; each line is checked against xref_line_is_def. */
+static void xref_scan_file(const char *path, const char *name, const char *lang)
+{
+	FILE *fp;
+	char line[512];
+	int lineno = 0, len;
+
+	fp = fopen(path, "r");
+	if (!fp) return;
+	while (fgets(line, sizeof line, fp) &&
+	       xref_nmatches < XREF_MAX_MATCHES) {
+		lineno++;
+		len = (int)strlen(line);
+		while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) len--;
+		if (xref_line_is_def(line, len, name, lang)) {
+			snprintf(xref_matches[xref_nmatches].file,
+			         sizeof xref_matches[0].file, "%s", path);
+			xref_matches[xref_nmatches].line = lineno;
+			{
+				int t = 0, s = 0;
+				while (s < len && isspace((unsigned char)line[s])) s++;
+				while (t < (int)sizeof(xref_matches[0].text) - 1 && s + t < len)
+					xref_matches[xref_nmatches].text[t] = line[s+t], t++;
+				xref_matches[xref_nmatches].text[t] = '\0';
+			}
+			xref_nmatches++;
+		}
+	}
+	fclose(fp);
+}
+
+/* Recursive directory walk from `dir`, scanning files whose extension
+ * matches the current language.  Skips .git, hidden dirs, and the usual
+ * build/output dirs.  Bounded by a file count so a huge tree won't stall. */
+#define XREF_MAX_FILES 4000
+static int xref_file_count;
+
+static void xref_walk_dir(const char *dir, const char *name, const char *lang)
+{
+	DIR *dp;
+	struct dirent *e;
+	char path[1024];
+
+	if (xref_file_count >= XREF_MAX_FILES) return;
+	dp = opendir(dir);
+	if (!dp) return;
+	while ((e = readdir(dp)) != NULL && xref_file_count < XREF_MAX_FILES) {
+		struct stat st;
+
+		if (e->d_name[0] == '.') continue;  /* hidden + . and .. */
+		snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+		if (stat(path, &st) != 0) continue;
+		if (S_ISDIR(st.st_mode)) {
+			/* skip common non-source dirs */
+			if (!strcmp(e->d_name, "node_modules") ||
+			    !strcmp(e->d_name, "build") ||
+			    !strcmp(e->d_name, "dist") ||
+			    !strcmp(e->d_name, "target") ||
+			    !strcmp(e->d_name, ".git"))
+				continue;
+			xref_walk_dir(path, name, lang);
+		} else if (S_ISREG(st.st_mode)) {
+			xref_file_count++;
+			if (xref_path_matches_lang(path, lang))
+				xref_scan_file(path, name, lang);
+		}
+	}
+	closedir(dp);
 }
 
 /* ---- *xref* buffer --------------------------------------------------- */
@@ -407,8 +504,48 @@ void xref_find_definitions(void)
 	}
 
 	xref_nmatches = 0;
+	/* First scan open buffers (fast, and the current file is here). */
 	for (i = 0; i < MAX_BUFFERS && xref_nmatches < XREF_MAX_MATCHES; i++)
 		xref_scan_buffer(i, name, lang);
+
+	/* Then walk files on disk so a definition in an unopened file (the
+	 * common case when M-. is invoked from a call site) is found.  Walk
+	 * from the current file's directory, falling back to "." — this keeps
+	 * the search local to the project rather than the whole filesystem. */
+	if (lang) {
+		char dirbuf[256];
+		const char *dir = ".";
+		if (editor.filename) {
+			const char *slash = strrchr(editor.filename, '/');
+			if (slash) {
+				int dl = slash - editor.filename;
+				if (dl >= (int)sizeof dirbuf) dl = (int)sizeof dirbuf - 1;
+				memcpy(dirbuf, editor.filename, dl);
+				dirbuf[dl] = '\0';
+				dir = dirbuf;
+			}
+		}
+		xref_file_count = 0;
+		xref_walk_dir(dir, name, lang);
+		/* dedupe: a definition in both an open buffer and on disk shows
+		 * twice; drop exact file+line duplicates. */
+		{
+			int a, b, w = 0;
+			for (a = 0; a < xref_nmatches; a++) {
+				int dup = 0;
+				for (b = 0; b < w; b++) {
+					if (xref_matches[b].line == xref_matches[a].line &&
+					    strcmp(xref_matches[b].file, xref_matches[a].file) == 0)
+						{ dup = 1; break; }
+				}
+				if (!dup) {
+					if (w != a) xref_matches[w] = xref_matches[a];
+					w++;
+				}
+			}
+			xref_nmatches = w;
+		}
+	}
 
 	if (xref_nmatches == 0) {
 		editor_set_status_message("No definition found for '%s'", name);
