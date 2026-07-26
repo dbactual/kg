@@ -3,7 +3,8 @@
 #include "def.h"
 
 
-// test 
+// test change here
+
 /* Repeat counts big enough to overflow the multiply, or to wedge the
  * editor for minutes, are clamped; nothing sensible repeats more often. */
 #define PREFIX_ARG_MAX 100000
@@ -307,6 +308,13 @@ void editor_process_keypress(int fd)
 	/* q closes special *...* buffers, but only if another buffer exists */
 	if (c == 'q' && is_special_buffer(editor.filename) && buf_count > 1) {
 		buf_kill(fd);
+		return;
+	}
+
+	/* g refreshes the *vc-dir* buffer in place by rebuilding it. */
+	if (c == 'g' && editor.syntax &&
+	    (editor.syntax->flags & SHL_VCDIR)) {
+		vc_open_dir();
 		return;
 	}
 
