@@ -86,6 +86,9 @@ static inline void tty_write(const void *buf, size_t n)
 #define HL_HIGHLIGHT_NUMBERS (1<<1)
 #define SHL_MARKDOWN         (1<<2) /* Use markdown-specific highlighter. */
 #define SHL_MAKEFILE         (1<<3) /* Use makefile-specific highlighter. */
+#define SHL_IBUFFER          (1<<4) /* *Buffer List* select-on-Enter mode. */
+#define SHL_DIFF             (1<<5) /* unified-diff highlighter (vc-mode). */
+#define SHL_GITSTATUS        (1<<6) /* git status --porcelain highlighter.  */
 
 /* Key action codes */
 enum KEY_ACTION {

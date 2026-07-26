@@ -4,7 +4,7 @@
 
 /* Synthetic syntax records for special modes. */
 static struct editor_syntax ibuffer_syntax = {
-	"IBuffer", NULL, NULL, "", "", "", 0
+	"IBuffer", NULL, NULL, "", "", "", SHL_IBUFFER
 };
 static struct editor_syntax text_syntax = {
 	"Text", NULL, NULL, "", "", "", 0

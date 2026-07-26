@@ -791,6 +791,58 @@ static void makefile_syntax(erow *row)
 	make_var_and_comment(row, i);
 }
 
+/* Unified-diff highlighter (vc-mode *git-diff* buffer).
+ *   "diff ..." / "index ..." / "--- " / "+++ "  → magenta (file header)
+ *   "@@ -a,b +c,d @@"                            → cyan   (hunk header)
+ *   "+" ...                                      → green  (added)
+ *   "-" ...                                      → red    (removed)
+ *   anything else (context, "\ No newline")      → normal
+ */
+static void diff_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+
+	if (len <= 0) return;
+
+	if (!strncmp(p, "diff ", 5) || !strncmp(p, "index ", 6) ||
+	    !strncmp(p, "--- ", 4)  || !strncmp(p, "+++ ", 4)) {
+		memset(row->hl, HL_STRING, len);
+		return;
+	}
+	if (!strncmp(p, "@@", 2)) {
+		memset(row->hl, HL_COMMENT, len);
+		return;
+	}
+	if (p[0] == '+') { memset(row->hl, HL_KEYWORD2, len); return; }
+	if (p[0] == '-') { memset(row->hl, HL_NUMBER,   len); return; }
+	/* leave HL_NORMAL */
+}
+
+/* `git status --porcelain=v1 -b` highlighter (vc-mode *git-status* buffer).
+ *   "## branch..."      → cyan (whole line, the branch header)
+ *   "XY path"           → color the 2-char status code, leave path normal:
+ *        ?? → red, A → green, D → red, M → yellow, R → magenta, else cyan.
+ */
+static void gitstatus_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	char x, y;
+
+	if (len <= 0) return;
+	if (!strncmp(p, "## ", 3)) { memset(row->hl, HL_COMMENT, len); return; }
+	if (len < 2) return;
+
+	x = p[0]; y = p[1];
+	if (x == '?' && y == '?') { row->hl[0] = HL_NUMBER;   row->hl[1] = HL_NUMBER;   return; }
+	if (x == 'A' || y == 'A') { row->hl[0] = HL_KEYWORD2; row->hl[1] = HL_KEYWORD2; return; }
+	if (x == 'D' || y == 'D') { row->hl[0] = HL_NUMBER;   row->hl[1] = HL_NUMBER;   return; }
+	if (x == 'M' || y == 'M') { row->hl[0] = HL_KEYWORD1; row->hl[1] = HL_KEYWORD1; return; }
+	if (x == 'R' || y == 'R') { row->hl[0] = HL_STRING;   row->hl[1] = HL_STRING;   return; }
+	row->hl[0] = HL_COMMENT; row->hl[1] = HL_COMMENT;
+}
+
 /* Set every byte of row->hl (that corresponds to every character in the line)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
@@ -816,6 +868,16 @@ void editor_update_syntax(erow *row)
 
 	if (editor.syntax->flags & SHL_MAKEFILE) {
 		makefile_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_DIFF) {
+		diff_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GITSTATUS) {
+		gitstatus_syntax(row);
 		return;
 	}
 
