@@ -70,24 +70,6 @@ static void vc_insert_command_output(const char *cmd)
 	free(out);
 }
 
-/* Run `cmd` and copy its first output line (trimmed of the trailing
- * newline) into `out`, NUL-terminated.  On failure or empty output,
- * out[0] is set to '\0'.  Used by vc_dir_populate to gather the summary
- * fields (toplevel, branch, upstream, remote url). */
-static void vc_git_first(const char *cmd, char *out, int outsize)
-{
-	char *buf;
-	int n = 0, i;
-
-	out[0] = '\0';
-	buf = shell_run(cmd, NULL, 0, &n);
-	if (!buf) return;
-	for (i = 0; i < n && buf[i] != '\n' && i < outsize - 1; i++)
-		out[i] = buf[i];
-	out[i] = '\0';
-	free(buf);
-}
-
 static void vc_status_populate(void)
 {
 	vc_insert_command_output("git status --porcelain=v1 -b");
@@ -159,20 +141,6 @@ static void vc_open_show(const char *hash)
 
 /* ---- VC-dir (C-x v v) -------------------------------------------------- */
 
-/* Map a porcelain v1 two-char status code to an Emacs VC-dir word. */
-static const char *vc_status_word(char x, char y)
-{
-	if (x == '?' && y == '?') return "unregistered";
-	if (x == 'A' || y == 'A') return "added";
-	if (x == 'D' || y == 'D') return "removed";
-	if (x == 'R' || y == 'R') return "renamed";
-	if (x == 'C' || y == 'C') return "copied";
-	if (x == 'U' || y == 'U' || x == 'A' || x == 'D') {
-		if (x == 'U' || y == 'U') return "conflict";
-	}
-	return "edited";  /* M or anything else */
-}
-
 /* Path of the file whose per-file diff is built by vc_filediff_populate();
  * set by vc_dir_diff() before opening the buffer. */
 static char vc_filediff_path[512];
@@ -238,172 +206,13 @@ static void vc_open_filediff(const char *path)
  * files grouped by directory, in the layout vcdir_syntax expects:
  *     "     <status-word><pad>path"      (file line, path at col 25)
  *     "<25 spaces><dir>/"               (directory header)            */
+/* *vc-dir* shows `git status --short` verbatim: a stable, parseable list
+ * of changed files (no custom summary or grouping).  Enter opens a file
+ * line, TAB opens a per-file diff; both parse the path out of the
+ * "XY path" porcelain line (see vc_dir_path_at_point). */
 static void vc_dir_populate(void)
 {
-	char line[512], val[512];
-	char workdir[512], branch[128], tracking[128], remote[128];
-	char remote_name[128];
-	int len, i, j;
-	const char *home;
-
-	/* ---- Summary ---- */
-	vc_git_first("git rev-parse --show-toplevel", val, sizeof val);
-	home = getenv("HOME");
-	if (home && home[0] && strlen(val) >= strlen(home) &&
-	    strncmp(val, home, strlen(home)) == 0 && val[strlen(home)] == '/') {
-		snprintf(workdir, sizeof workdir, "~%s/", val + strlen(home));
-	} else if (val[0]) {
-		snprintf(workdir, sizeof workdir, "%s/", val);
-	} else {
-		snprintf(workdir, sizeof workdir, "(unknown)");
-	}
-
-	vc_git_first("git rev-parse --abbrev-ref HEAD", branch, sizeof branch);
-	if (!branch[0] || strcmp(branch, "HEAD") == 0) {
-		char sh[16];
-		vc_git_first("git rev-parse --short HEAD", sh, sizeof sh);
-		snprintf(branch, sizeof branch, "HEAD (detached at %s)", sh);
-	}
-
-	vc_git_first("git rev-parse --abbrev-ref @{upstream}", tracking, sizeof tracking);
-	if (!tracking[0]) snprintf(tracking, sizeof tracking, "Not tracking");
-
-	/* Remote url from the upstream's remote name (part before '/'). */
-	remote[0] = '\0';
-	{
-		const char *slash = strchr(tracking, '/');
-		if (slash && slash > tracking) {
-			int rl = slash - tracking;
-			char cmd[160];
-			if (rl >= (int)sizeof(remote_name)) rl = (int)sizeof(remote_name) - 1;
-			memcpy(remote_name, tracking, rl);
-			remote_name[rl] = '\0';
-			snprintf(cmd, sizeof cmd, "git remote get-url %s", remote_name);
-			vc_git_first(cmd, remote, sizeof remote);
-		}
-	}
-	if (!remote[0]) snprintf(remote, sizeof remote, "No remote");
-
-	{
-		char stashcmd[] = "git stash list | wc -l";
-		char stashn[16];
-		vc_git_first(stashcmd, stashn, sizeof stashn);
-		/* wc -l may yield leading spaces; trim */
-		{
-			char *p = stashn;
-			while (*p == ' ' || *p == '\t') p++;
-			if (*p == '0' && p[1] == '\0')
-				snprintf(val, sizeof val, "Nothing stashed");
-			else
-				snprintf(val, sizeof val, "%s stash entr%s",
-				         p, atoi(p) == 1 ? "y" : "ies");
-		}
-	}
-
-	len = snprintf(line, sizeof line, "VC backend : Git");
-	editor_insert_row(editor.numrows, line, len);
-	len = snprintf(line, sizeof line, "Working dir: %s", workdir);
-	editor_insert_row(editor.numrows, line, len);
-	len = snprintf(line, sizeof line, "Branch     : %s", branch);
-	editor_insert_row(editor.numrows, line, len);
-	len = snprintf(line, sizeof line, "Tracking   : %s", tracking);
-	editor_insert_row(editor.numrows, line, len);
-	len = snprintf(line, sizeof line, "Remote     : %s", remote);
-	editor_insert_row(editor.numrows, line, len);
-	len = snprintf(line, sizeof line, "Stash      : %s", val);
-	editor_insert_row(editor.numrows, line, len);
-	editor_insert_row(editor.numrows, "", 0);  /* blank separator */
-
-	/* ---- Changed files grouped by directory ---- */
-	{
-		#define VC_MAX_FILES 256
-		static char paths[VC_MAX_FILES][256];
-		static char words[VC_MAX_FILES][16];
-		int nfiles = 0;
-		char *out;
-		int out_len = 0, start;
-
-		out = shell_run("git status --porcelain", NULL, 0, &out_len);
-		if (!out) {
-			editor_insert_row(editor.numrows, "(vc: git status failed)", 23);
-			return;
-		}
-
-		start = 0;
-		for (i = 0; i <= out_len && nfiles < VC_MAX_FILES; i++) {
-			if (i == out_len || out[i] == '\n') {
-				const char *s = out + start;
-				int linelen = i - start;
-				const char *p;
-				int plen, arrow;
-				start = i + 1;
-				if (linelen < 3) continue;
-
-				/* status word from XY (cols 0-1) */
-				snprintf(words[nfiles], sizeof words[nfiles], "%s",
-				         vc_status_word(s[0], s[1]));
-
-				/* path begins at col 3; renames "old -> new" → new */
-				p = s + 3;
-				plen = linelen - 3;
-				{
-					const char *ar = NULL;
-					for (arrow = 0; arrow + 4 <= plen; arrow++)
-						if (p[arrow]==' ' && p[arrow+1]=='-' &&
-						    p[arrow+2]=='>' && p[arrow+3]==' ') { ar = p + arrow + 4; break; }
-					if (ar) { plen = (s + linelen) - ar; p = ar; }
-				}
-				if (plen <= 0) continue;
-				/* strip surrounding quotes */
-				if (plen >= 2 && p[0] == '"' && p[plen-1] == '"') { p++; plen -= 2; }
-				if (plen <= 0) continue;
-				if (plen >= (int)sizeof(paths[nfiles])) plen = (int)sizeof(paths[nfiles]) - 1;
-				memcpy(paths[nfiles], p, plen);
-				paths[nfiles][plen] = '\0';
-				nfiles++;
-			}
-		}
-		free(out);
-
-		/* insertion sort by path so directories group together */
-		for (i = 1; i < nfiles; i++) {
-			for (j = i; j > 0 && strcmp(paths[j-1], paths[j]) > 0; j--) {
-				char tmp[256];
-				strcpy(tmp, paths[j]);   strcpy(paths[j], paths[j-1]); strcpy(paths[j-1], tmp);
-				strcpy(tmp, words[j]);   strcpy(words[j], words[j-1]); strcpy(words[j-1], tmp);
-			}
-		}
-
-		/* emit directory headers + file lines */
-		{
-			char curdir[256] = "";
-			for (i = 0; i < nfiles; i++) {
-				const char *slash = strrchr(paths[i], '/');
-				char dir[256];
-				int dl;
-				if (slash) {
-					dl = slash - paths[i];
-					if (dl >= (int)sizeof(dir)) dl = (int)sizeof(dir) - 1;
-					memcpy(dir, paths[i], dl);
-					dir[dl] = '\0';
-				} else {
-					strcpy(dir, ".");
-				}
-				if (strcmp(dir, curdir) != 0) {
-					strcpy(curdir, dir);
-					len = snprintf(line, sizeof line, "%25s%s/", "", dir);
-					editor_insert_row(editor.numrows, line, len);
-				}
-				len = snprintf(line, sizeof line, "     %-20s%s",
-				               words[i], paths[i]);
-				editor_insert_row(editor.numrows, line, len);
-			}
-			if (nfiles == 0) {
-				len = snprintf(line, sizeof line, "(no changed files)");
-				editor_insert_row(editor.numrows, line, len);
-			}
-		}
-	}
+	vc_insert_command_output("git status --short");
 }
 
 void vc_open_dir(void)
@@ -413,35 +222,49 @@ void vc_open_dir(void)
 	vc_rehighlight();
 }
 
-/* Extract the file path from a *vc-dir* file line at point into `out`
- * (NUL-terminated).  Returns 1 if the line is a file line, 0 otherwise
- * (summary line, directory header, or blank). */
+/* Extract the file path from a *vc-dir* line at point into `out`
+ * (NUL-terminated).  A *vc-dir* line is `git status --short` output:
+ *   "XY path"          (XY = 2-char porcelain status, path at col 3)
+ *   "XY old -> new"    (rename — take the new side)
+ *   "?? path"          (untracked)
+ * Returns 1 if the line is a file line, 0 otherwise (blank or too short). */
 static int vc_dir_path_at_point(char *out, int outsize)
 {
 	int filerow = editor.rowoff + editor.cy;
-	const char *s;
-	int len;
-	const char *t;
-	int tl;
+	const char *s, *p;
+	int len, plen;
+	const char *arrow;
 
 	if (filerow < 0 || filerow >= editor.numrows) return 0;
 	s = editor.row[filerow].chars;
 	len = editor.row[filerow].size;
-	if (len < 26) return 0;
-	/* file line: cols 0-4 blank, col 5 non-blank */
-	if (!(s[0]==' ' && s[1]==' ' && s[2]==' ' && s[3]==' ' && s[4]==' ' && s[5]!=' '))
-		return 0;
+	if (len < 4) return 0;            /* need "XY " + at least one path char */
 
-	t = trim_field(s + 25, len - 25, &tl);
-	if (tl <= 0) return 0;
-	if (tl >= outsize) tl = outsize - 1;
-	memcpy(out, t, tl);
-	out[tl] = '\0';
-	/* strip surrounding quotes (quoted paths) */
-	if (tl >= 2 && out[0] == '"' && out[tl-1] == '"') {
-		memmove(out, out + 1, tl - 2);
-		out[tl - 2] = '\0';
+	p = s + 3;                        /* skip "XY " */
+	plen = len - 3;
+
+	/* Rename: "old -> new" — take the right-hand side. */
+	arrow = NULL;
+	{
+		int i;
+		for (i = 0; i + 4 <= plen; i++)
+			if (p[i]==' ' && p[i+1]=='-' && p[i+2]=='>' && p[i+3]==' ') {
+				arrow = p + i + 4; break;
+			}
 	}
+	if (arrow) {
+		p = arrow;
+		plen = (s + len) - arrow;
+	}
+	if (plen <= 0) return 0;
+
+	/* Strip surrounding quotes (git quotes paths with special chars). */
+	if (plen >= 2 && p[0] == '"' && p[plen-1] == '"') { p++; plen -= 2; }
+	if (plen <= 0) return 0;
+
+	if (plen >= outsize) plen = outsize - 1;
+	memcpy(out, p, plen);
+	out[plen] = '\0';
 	if (!out[0]) return 0;
 	return 1;
 }
