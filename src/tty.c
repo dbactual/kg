@@ -202,6 +202,8 @@ static int parse_escape(int fd)
 	if (seq[0] == 'z') return ALT_Z;
 	if (seq[0] == '\\') return ALT_BACKSLASH;
 	if (seq[0] == ' ') return ALT_SPACE;
+	if (seq[0] == '.') return ALT_PERIOD;
+	if (seq[0] == ',') return ALT_COMMA;
 	if (seq[0] >= '0' && seq[0] <= '9') return ALT_0 + (seq[0] - '0');
 
 	if (read(fd, seq+1, 1) == 0) return ESC;

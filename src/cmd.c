@@ -134,6 +134,7 @@ static void cmd_vc_diff(int fd)   { (void)fd; vc_open_diff();   }
 static void cmd_vc_log(int fd)    { (void)fd; vc_open_log();    }
 static void cmd_vc_dir(int fd)    { (void)fd; vc_open_dir();    }
 static void cmd_grep(int fd)      { grep_open(fd);             }
+static void cmd_xref_find(int fd) { (void)fd; xref_find_definitions(); }
 
 /* Toggle auto-revert on the current buffer.  When on (or when the global
  * setting below is on), a clean buffer whose underlying file has changed on
@@ -284,6 +285,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "windmove-left",            cmd_windmove_left,           CMD_NONE },
 	{ "windmove-right",           cmd_windmove_right,          CMD_NONE },
 	{ "windmove-up",              cmd_windmove_up,             CMD_NONE },
+	{ "xref-find-definitions",    cmd_xref_find,               CMD_NONE },
 	{ "zap-to-char",              cmd_zap_to_char,             CMD_EDITS_BUFFER },
 	{ NULL, NULL, CMD_NONE }
 };

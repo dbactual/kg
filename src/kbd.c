@@ -355,6 +355,7 @@ void editor_process_keypress(int fd)
 			if (editor.syntax->flags & SHL_GITLOG)    { vc_log_select();    return; }
 			if (editor.syntax->flags & SHL_VCDIR)     { vc_dir_select();    return; }
 			if (editor.syntax->flags & SHL_GREP)      { grep_select();      return; }
+			if (editor.syntax->flags & SHL_XREF)      { xref_select();      return; }
 			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
 		}
 		buf_ibuffer_select();
@@ -613,6 +614,12 @@ void editor_process_keypress(int fd)
 		break;
 	case ALT_SPACE:     /* M-SPC: just one space */
 		editor_just_one_space();
+		break;
+	case ALT_PERIOD:    /* M-.: xref-find-definitions (regex fallback) */
+		xref_find_definitions();
+		break;
+	case ALT_COMMA:     /* M-,: pop the xref mark ring (jump back) */
+		xref_pop_mark_ring();
 		break;
 	case ALT_M:         /* M-m: back-to-indentation */
 		editor_move_to_indentation();

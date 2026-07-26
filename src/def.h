@@ -97,6 +97,7 @@ int tty_query_background(int fd);
 #define SHL_GITLOG           (1<<7) /* git log highlighter (vc-mode).       */
 #define SHL_VCDIR            (1<<8) /* VC-dir summary/file-list highlighter.*/
 #define SHL_GREP             (1<<9) /* *grep* file:line highlighter.        */
+#define SHL_XREF             (1<<10)/* *xref* definition-match highlighter.*/
 
 /* Key action codes */
 enum KEY_ACTION {
@@ -200,6 +201,8 @@ enum KEY_ACTION {
 	ALT_Z,         /* M-z zap-to-char */
 	ALT_BACKSLASH, /* M-\ delete-horizontal-space */
 	ALT_SPACE,     /* M-SPC just-one-space */
+	ALT_PERIOD,    /* M-. xref-find-definitions */
+	ALT_COMMA,     /* M-, xref-pop-mark-ring */
 	ALT_0,         /* M-0..M-9 numeric prefix -- keep contiguous */
 	ALT_1,
 	ALT_2,
@@ -461,6 +464,9 @@ void vc_dir_diff(void);
 void vc_filediff_close(int fd);
 void grep_open(int fd);
 void grep_select(void);
+void xref_find_definitions(void);
+void xref_select(void);
+void xref_pop_mark_ring(void);
 void buf_display_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */

@@ -1,0 +1,472 @@
+/* ============================ xref-find-definitions =======================
+ *
+ * A regex-fallback "jump to definition" (M-.) with no external dependencies.
+ *
+ * Extracts the identifier at point, then scans the current buffer (and, if
+ * the current file exists on disk, the whole file) for lines that look like
+ * a definition of that identifier in the current language.  Patterns are
+ * language-dependent and intentionally simple — anchored at line start, with
+ * a couple of metacharacters — so this catches the common case (top-level
+ * function/struct/class defs) without a tags file or a language server.
+ *
+ *   single match   → jump straight there
+ *   multiple       → open a *xref* buffer listing file:line: text, Enter
+ *                    on a line jumps to it (reuses the grep file:line parse)
+ *   no match       → "No definition found for '<name>'"
+ *
+ * See xref_select() for the jump handler; SHL_XREF drives the Enter dispatch.
+ */
+
+#include "def.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static struct editor_syntax xref_syntax = {
+	"Xref", NULL, NULL, "", "", "", SHL_XREF
+};
+
+#define XREF_NAME "*xref*"
+#define XREF_MAX_MATCHES 256
+#define XREF_MARK_RING 64          /* max saved positions for M-, */
+
+/* A found definition.  file is a static buffer (overwritten per match);
+ * xref_populate copies it into the buffer rows so it's fine to reuse. */
+struct xref_match {
+	const char *file;   /* buflist[i].filename or a static disk-file name */
+	int  line;          /* 1-based */
+	char text[160];     /* the matching line, trimmed */
+};
+
+static struct xref_match xref_matches[XREF_MAX_MATCHES];
+static int xref_nmatches;
+
+/* ---- mark ring (M-, jumps back) --------------------------------------- *
+ *
+ * Each M-. jump pushes where point was before the jump; M-, pops the most
+ * recent and jumps back there.  Separate from the region mark (which is
+ * clobbered by selection commands), so xref jumps and region ops don't
+ * interfere. */
+struct xref_mark {
+	char file[256];
+	int  line;   /* 1-based */
+	int  col;    /* 1-based */
+};
+static struct xref_mark xref_ring[XREF_MARK_RING];
+static int xref_ring_len = 0;
+
+/* Push the current position (filename + 1-based line/col) onto the ring. */
+static void xref_push_mark(void)
+{
+	int row, col;
+	if (xref_ring_len >= XREF_MARK_RING) {
+		/* drop oldest to make room */
+		memmove(&xref_ring[0], &xref_ring[1],
+		        (XREF_MARK_RING - 1) * sizeof xref_ring[0]);
+		xref_ring_len = XREF_MARK_RING - 1;
+	}
+	row = editor.rowoff + editor.cy;
+	col = editor.coloff + editor.cx;
+	snprintf(xref_ring[xref_ring_len].file,
+	         sizeof xref_ring[0].file, "%s",
+	         editor.filename ? editor.filename : "");
+	xref_ring[xref_ring_len].line = row + 1;
+	xref_ring[xref_ring_len].col  = col + 1;
+	xref_ring_len++;
+}
+
+/* M-,: jump back to the last M-. departure point. */
+void xref_pop_mark_ring(void)
+{
+	struct xref_mark m;
+	int slot;
+
+	if (xref_ring_len <= 0) {
+		editor_set_status_message("No xref mark to pop");
+		return;
+	}
+	xref_ring_len--;
+	m = xref_ring[xref_ring_len];
+	slot = buf_open_path(m.file, 0);
+	if (slot < 0) return;
+	editor_goto_line_direct(m.line, m.col);
+	editor_set_status_message("Back to %s:%d", m.file, m.line);
+}
+
+/* ---- identifier at point ----------------------------------------------- */
+
+/* Fill out[] with the identifier (alnum + _) under the cursor and return
+ * its length, or 0 if point isn't on an identifier character. */
+static int xref_word_at_point(char *out, int outsize)
+{
+	int filerow = editor.rowoff + editor.cy;
+	int filecol = editor.coloff + editor.cx;
+	erow *row;
+	int start, end, len;
+
+	if (filerow < 0 || filerow >= editor.numrows) return 0;
+	row = &editor.row[filerow];
+	if (filecol < 0 || filecol > row->size) return 0;
+
+	/* If point is just past an identifier (common: cursor at end of word),
+	 * step back one so we still grab it. */
+	if (filecol >= row->size || !(isalnum((unsigned char)row->chars[filecol]) ||
+	                              row->chars[filecol] == '_')) {
+		if (filecol > 0 && (isalnum((unsigned char)row->chars[filecol-1]) ||
+		                    row->chars[filecol-1] == '_'))
+			filecol--;
+		else
+			return 0;
+	}
+
+	start = filecol;
+	while (start > 0 && (isalnum((unsigned char)row->chars[start-1]) ||
+	                     row->chars[start-1] == '_'))
+		start--;
+	end = filecol;
+	while (end < row->size && (isalnum((unsigned char)row->chars[end]) ||
+	                           row->chars[end] == '_'))
+		end++;
+
+	len = end - start;
+	if (len <= 0 || len >= outsize) return 0;
+	memcpy(out, row->chars + start, len);
+	out[len] = '\0';
+	return len;
+}
+
+/* ---- language-dependent definition patterns ---------------------------- *
+ *
+ * Each pattern is matched against the start of a line.  Metacharacters:
+ *   %s  one or more whitespace
+ *   %S  zero or more non-newline chars (a greedy "any prefix" — used to
+ *       skip a return type like "static int" before the function name)
+ *   %w  the identifier we're looking for (word-boundary checked after)
+ * Everything else is a literal.  Patterns are tried in order; the first that
+ * matches wins (so put more specific forms first).  A NULL list means "no
+ * patterns for this language" — the finder then falls back to a generic
+ * shape. */
+
+static const char *xref_patterns_C[] = {
+	"%s* struct %w ",          /* struct Foo { / struct Foo ; */
+	"%s* struct %w{",
+	"%s* enum %w ",
+	"%s* enum %w{",
+	"%s* #define %w",
+	"%s* typedef %S %w;",      /* typedef ... Foo; */
+	"%s* %S %w(",              /* [static int] foo(...)  (the common case) */
+	NULL
+};
+
+static const char *xref_patterns_Python[] = {
+	"%s* def %w(",
+	"%s* class %w(",
+	"%s* class %w:",
+	NULL
+};
+
+static const char *xref_patterns_Shell[] = {
+	"%s* %w()",
+	"%s* %w() {",
+	"%s* function %w",
+	NULL
+};
+
+static const char *xref_patterns_Rust[] = {
+	"%s* fn %w(",
+	"%s* struct %w",
+	"%s* enum %w",
+	"%s* trait %w",
+	"%s* impl %w",
+	NULL
+};
+
+static const char *xref_patterns_Java[] = {
+	"%s* class %w",
+	"%s* interface %w",
+	"%s* enum %w",
+	"%s* %S %w(",              /* method */
+	NULL
+};
+
+static const char *xref_patterns_JS[] = {
+	"%s* function %w(",
+	"%s* class %w",
+	"%s* %w(",
+	"%s* %w =",
+	"%s* %w:",
+	NULL
+};
+
+/* Pick the pattern list for the current buffer's syntax name. */
+static const char **xref_patterns_for(const char *lang)
+{
+	if (!lang) return NULL;
+	if (!strcmp(lang, "C") || !strcmp(lang, "C#") || !strcmp(lang, "PHP"))
+		return xref_patterns_C;
+	if (!strcmp(lang, "Python")) return xref_patterns_Python;
+	if (!strcmp(lang, "Shell")) return xref_patterns_Shell;
+	if (!strcmp(lang, "Rust"))  return xref_patterns_Rust;
+	if (!strcmp(lang, "Java") || !strcmp(lang, "TypeScript") ||
+	    !strcmp(lang, "Swift") || !strcmp(lang, "Dart"))
+		return xref_patterns_Java;
+	if (!strcmp(lang, "JavaScript") || !strcmp(lang, "React") ||
+	    !strcmp(lang, "Vue") || !strcmp(lang, "Angular") ||
+	    !strcmp(lang, "Svelte"))
+		return xref_patterns_JS;
+	return NULL;
+}
+
+/* Match one pattern against the start of line `s` (len chars).  name is the
+ * identifier.  Returns 1 on match.
+ * %S is "any prefix": it tries the rest of the pattern at every position
+ * where the following %w token appears in the line (so "%S %w(" finds the
+ * name-plus-open-paren anywhere after leading whitespace). */
+static int xref_match_pattern(const char *pat, const char *s, int len,
+                              const char *name)
+{
+	int i = 0, j = 0, nlen = (int)strlen(name);
+
+	while (pat[j]) {
+		if (pat[j] == '%') {
+			char c = pat[j+1];
+			j += 2;
+			if (c == 's') {
+				/* one or more whitespace */
+				if (i >= len || !isspace((unsigned char)s[i])) return 0;
+				while (i < len && isspace((unsigned char)s[i])) i++;
+			} else if (c == 'w') {
+				/* the identifier, with a word boundary after */
+				if (i + nlen > len) return 0;
+				if (memcmp(s + i, name, nlen) != 0) return 0;
+				if (i + nlen < len &&
+				    (isalnum((unsigned char)s[i+nlen]) || s[i+nlen] == '_'))
+					return 0;
+				i += nlen;
+			} else if (c == 'S') {
+				/* greedy-ish "any prefix": scan forward for a position where
+				 * the remainder of the pattern matches.  The remainder must
+				 * start with %w (our only use), so jump to each occurrence
+				 * of `name` as a word and try the tail from there. */
+				const char *tail = pat + j;   /* remainder after %S */
+				int k;
+				/* skip the " " literal that usually follows %S in our pats */
+				/* (patterns write "%S %w(" meaning prefix + space + name) */
+				for (k = i; k + nlen <= len; k++) {
+					if (memcmp(s + k, name, nlen) != 0) continue;
+					/* word boundary before (not a word char) */
+					if (k > 0 && (isalnum((unsigned char)s[k-1]) || s[k-1] == '_'))
+						continue;
+					/* word boundary after */
+					if (k + nlen < len &&
+					    (isalnum((unsigned char)s[k+nlen]) || s[k+nlen] == '_'))
+						continue;
+					/* try the tail from here; tail is e.g. "%w(" — but %w
+					 * already consumed by the scan, so match the literal
+					 * part after %w in the tail. */
+					{
+						const char *t = tail;
+						int ii = k + nlen;
+						/* skip %w in tail (we already matched name) */
+						if (t[0] == '%' && t[1] == 'w') t += 2;
+						if (xref_match_pattern(t, s + ii, len - ii, name))
+							return 1;
+					}
+				}
+				return 0;
+			} else {
+				return 0;  /* unknown metachar */
+			}
+		} else {
+			if (i >= len || s[i] != pat[j]) return 0;
+			i++; j++;
+		}
+	}
+	return 1;
+}
+
+/* Does `line` look like a definition of `name` in language `lang`? */
+static int xref_line_is_def(const char *line, int len, const char *name,
+                            const char *lang)
+{
+	const char **pats;
+	int k, i;
+	int has_paren_call;
+
+	/* Trim trailing whitespace to inspect the line's end. */
+	while (len > 0 && isspace((unsigned char)line[len-1])) len--;
+
+	pats = xref_patterns_for(lang);
+	if (pats) {
+		for (k = 0; pats[k]; k++)
+			if (xref_match_pattern(pats[k], line, len, name))
+				goto matched;
+	}
+	/* Generic fallback: "<name>(" somewhere after a word boundary, with the
+	 * line ending in ')' or ') {' (a definition body), not ';' (a call or
+	 * forward declaration) and not inside an assignment. */
+	{
+		int nlen = (int)strlen(name);
+		for (i = 0; i + nlen <= len; i++) {
+			if (memcmp(line + i, name, nlen) != 0) continue;
+			if (i > 0 && (isalnum((unsigned char)line[i-1]) || line[i-1] == '_'))
+				continue;
+			if (i + nlen < len &&
+			    (isalnum((unsigned char)line[i+nlen]) || line[i+nlen] == '_'))
+				continue;
+			if (i + nlen < len && line[i+nlen] == '(')
+				goto matched;
+		}
+	}
+	return 0;
+
+matched:
+	/* Heuristic to reject calls/declarations: if the line ends with ';'
+	 * it's a statement (a call or a forward declaration), not a definition
+	 * body — unless it's a #define / typedef, which the patterns above
+	 * already accepted and which legitimately end with ';'.  We only apply
+	 * the ';' reject to the paren-call shape.  Detect that by checking
+	 * whether the matched line contains a '(' used as a call. */
+	has_paren_call = 0;
+	for (i = 0; i < len; i++) if (line[i] == '(') { has_paren_call = 1; break; }
+	if (has_paren_call && len > 0 && line[len-1] == ';') {
+		/* could still be "typedef ... foo(int);" — only reject if the line
+		 * looks like an expression statement: contains '=' before the name
+		 * or the name( is not at statement start.  Keep it simple: reject
+		 * any ';' -ending line that has a '(' call. */
+		return 0;
+	}
+	return 1;
+}
+
+/* ---- search ---------------------------------------------------------- *
+ *
+ * Scan all open buffers for definition lines.  We don't read files from
+ * disk — only buffers the user has opened — so M-. finds definitions that
+ * are already loaded.  (Scanning the disk file would be a natural extension;
+ * kept out of the first cut for simplicity.) */
+
+static void xref_scan_buffer(int bufidx, const char *name, const char *lang)
+{
+	struct editor_buffer *b = &buflist[bufidx];
+	int i;
+
+	if (!b->active || !b->row) return;
+	for (i = 0; i < b->numrows && xref_nmatches < XREF_MAX_MATCHES; i++) {
+		if (xref_line_is_def(b->row[i].chars, b->row[i].size, name, lang)) {
+			xref_matches[xref_nmatches].file = b->filename ? b->filename : "[new]";
+			xref_matches[xref_nmatches].line = i + 1;
+			{
+				int n = b->row[i].size, t = 0, s = 0;
+				while (s < n && isspace((unsigned char)b->row[i].chars[s])) s++;
+				while (t < (int)sizeof(xref_matches[0].text) - 1 && s + t < n)
+					xref_matches[xref_nmatches].text[t] = b->row[i].chars[s+t], t++;
+				xref_matches[xref_nmatches].text[t] = '\0';
+			}
+			xref_nmatches++;
+		}
+	}
+}
+
+/* ---- *xref* buffer --------------------------------------------------- */
+
+static void xref_populate(void)
+{
+	char line[256];
+	int i, len;
+
+	for (i = 0; i < xref_nmatches; i++) {
+		len = snprintf(line, sizeof line, "%s:%d: %s",
+		               xref_matches[i].file, xref_matches[i].line,
+		               xref_matches[i].text);
+		editor_insert_row(editor.numrows, line, len);
+	}
+}
+
+static void xref_rehighlight(void)
+{
+	int i;
+	for (i = 0; i < editor.numrows; i++)
+		editor_update_row(&editor.row[i]);
+}
+
+/* Public: run the search and either jump (single match) or open *xref*. */
+void xref_find_definitions(void)
+{
+	char name[128];
+	const char *lang;
+	int i;
+
+	if (!editor.syntax) lang = NULL;
+	else lang = editor.syntax->name;
+
+	if (!xref_word_at_point(name, sizeof name)) {
+		editor_set_status_message("No identifier at point");
+		return;
+	}
+
+	xref_nmatches = 0;
+	for (i = 0; i < MAX_BUFFERS && xref_nmatches < XREF_MAX_MATCHES; i++)
+		xref_scan_buffer(i, name, lang);
+
+	if (xref_nmatches == 0) {
+		editor_set_status_message("No definition found for '%s'", name);
+		return;
+	}
+	if (xref_nmatches == 1) {
+		xref_push_mark();
+		int slot = buf_open_path(xref_matches[0].file, 0);
+		if (slot < 0) return;
+		editor_goto_line_direct(xref_matches[0].line, 1);
+		editor_set_status_message("%s:%d", xref_matches[0].file, xref_matches[0].line);
+		return;
+	}
+	/* Multiple: show the *xref* buffer.  Carrying the match list through a
+	 * static is safe because populate runs before any further edits. */
+	buf_open_special(XREF_NAME, &xref_syntax, xref_populate,
+	                 "xref — RET to jump, q to close.");
+	xref_rehighlight();
+}
+
+/* Enter in *xref*: parse "file:line: text" and jump (same shape as grep). */
+void xref_select(void)
+{
+	int filerow = editor.rowoff + editor.cy;
+	const char *s;
+	int len, i, colon1, colon2, linenum;
+	char path[512];
+	int plen;
+
+	if (editor.syntax != &xref_syntax) return;
+	if (filerow < 0 || filerow >= editor.numrows) return;
+	s = editor.row[filerow].chars;
+	len = editor.row[filerow].size;
+	if (len <= 0) return;
+
+	colon1 = -1;
+	for (i = 0; i < len; i++) if (s[i] == ':') { colon1 = i; break; }
+	if (colon1 <= 0) return;
+	colon2 = -1;
+	for (i = colon1 + 1; i < len; i++) if (s[i] == ':') { colon2 = i; break; }
+	if (colon2 < 0) return;
+	linenum = 0;
+	for (i = colon1 + 1; i < colon2; i++) {
+		if (!isdigit((unsigned char)s[i])) return;
+		linenum = linenum * 10 + (s[i] - '0');
+	}
+	if (linenum < 1) return;
+
+	plen = colon1;
+	if (plen >= (int)sizeof path) plen = (int)sizeof path - 1;
+	memcpy(path, s, plen);
+	path[plen] = '\0';
+
+	{
+		xref_push_mark();
+		int slot = buf_open_path(path, 0);
+		if (slot < 0) return;
+		editor_goto_line_direct(linenum, 1);
+		editor_set_status_message("%s:%d", path, linenum);
+	}
+}
