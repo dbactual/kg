@@ -574,7 +574,7 @@ char *shell_run(const char *cmd, const char *in, int inlen, int *out_len);
 int is_separator(int c);
 int editor_row_has_open_comment(erow *row);
 void editor_update_syntax(erow *row);
-int editor_syntax_to_color(int hl);
+const char *editor_syntax_to_color(int hl);
 void editor_select_syntax_highlight(char *filename);
 
 /* tty.c */

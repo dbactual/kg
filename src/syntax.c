@@ -20,6 +20,7 @@
  * There is no support to highlight patterns currently. */
 
 #include "def.h"
+#include <stdlib.h>
 
 /* C / C++ */
 char *C_HL_extensions[] = {".c",".h",".cpp",".hpp",".cc",NULL};
@@ -1112,18 +1113,82 @@ void editor_update_syntax(erow *row)
 	row->hl_oc = oc;
 }
 
-/* Maps syntax highlight token types to terminal colors. */
-int editor_syntax_to_color(int hl)
+/* Emacs default font-lock colors.
+ *
+ * Emacs ships two palettes in font-lock.el, selected by frame background:
+ *   (background light)  — Firebrick comments, Purple keywords, Blue
+ *                         function names, ForestGreen types, RosyBrown
+ *                         strings, DarkCyan constants
+ *   (background dark)   — chocolate1 comments, Cyan keywords, LightSkyBlue
+ *                         function names, PaleGreen types, LightSalmon
+ *                         strings, Aquamarine constants
+ *
+ * Many of these hues have no match in the 8/16-colour ANSI set, so the
+ * sequences below use 256-colour SGR (`\x1b[38;5;Nm`) — editor_syntax_to_color
+ * now returns the whole escape string and display.c emits it verbatim.
+ *
+ * kg's token set is coarser than Emacs's faces, so the mapping is:
+ *   HL_COMMENT/MLCOMMENT  font-lock-comment-face
+ *   HL_KEYWORD1           font-lock-keyword-face        (Purple / Cyan)
+ *   HL_KEYWORD2           font-lock-type-face           (ForestGreen / PaleGreen)
+ *   HL_STRING             font-lock-string-face         (RosyBrown / LightSalmon)
+ *   HL_NUMBER             (Emacs has no number face)    — default-ish
+ *   HL_MATCH              search match — not an Emacs foreground; keep a
+ *                         readable inverse-ish blue
+ *
+ * The background is picked once and cached:
+ *   - $KG_BG=dark (or =light) forces it
+ *   - else $COLORFGBG (conventional "fg;bg" where bg >= 8 means dark) decides
+ *   - else light
+ */
+static int vc_dark_background(void)
 {
+	const char *bg, *p;
+
+	bg = getenv("KG_BG");
+	if (bg) {
+		if (bg[0] == 'd' || bg[0] == 'D') return 1;   /* dark        */
+		if (bg[0] == 'l' || bg[0] == 'L') return 0;   /* light       */
+	}
+	p = getenv("COLORFGBG");
+	if (p) {
+		const char *semi = strchr(p, ';');
+		if (semi) {
+			int b = atoi(semi + 1);
+			if (b >= 8) return 1;
+		}
+	}
+	return 0;
+}
+
+const char *editor_syntax_to_color(int hl)
+{
+	static int checked;
+	static int dark;
+
+	if (!checked) { dark = vc_dark_background(); checked = 1; }
+
+	if (dark) {
+		switch (hl) {
+		case HL_COMMENT:
+		case HL_MLCOMMENT: return "\x1b[38;5;208m";  /* chocolate1 (orange)   */
+		case HL_KEYWORD1:  return "\x1b[36m";         /* Cyan (keywords)       */
+		case HL_KEYWORD2:  return "\x1b[38;5;120m";   /* PaleGreen (types)     */
+		case HL_STRING:    return "\x1b[38;5;216m";   /* LightSalmon           */
+		case HL_NUMBER:    return "\x1b[37m";         /* (Emacs: default)      */
+		case HL_MATCH:     return "\x1b[34m";         /* blue (search match)   */
+		default:           return "\x1b[37m";         /* white                 */
+		}
+	}
 	switch (hl) {
 	case HL_COMMENT:
-	case HL_MLCOMMENT: return 36;   /* cyan */
-	case HL_KEYWORD1:  return 33;   /* yellow */
-	case HL_KEYWORD2:  return 32;   /* green */
-	case HL_STRING:    return 35;   /* magenta */
-	case HL_NUMBER:    return 31;   /* red */
-	case HL_MATCH:     return 34;   /* blue */
-	default:           return 37;   /* white */
+	case HL_MLCOMMENT: return "\x1b[38;5;124m";  /* Firebrick (dark red)   */
+	case HL_KEYWORD1:  return "\x1b[38;5;129m";  /* Purple                 */
+	case HL_KEYWORD2:  return "\x1b[38;5;34m";   /* ForestGreen (types)    */
+	case HL_STRING:    return "\x1b[38;5;138m";  /* RosyBrown (mauve)      */
+	case HL_NUMBER:    return "\x1b[37m";        /* (Emacs: default)       */
+	case HL_MATCH:     return "\x1b[34m";        /* blue (search match)    */
+	default:           return "\x1b[37m";        /* white                  */
 	}
 }
 

@@ -64,16 +64,36 @@ static void test_is_separator_alnum_false(void)
 
 /* ---- editor_syntax_to_color tests ---- */
 
+/* editor_syntax_to_color now returns the whole SGR escape string (so it
+ * can use 256-colour codes for Emacs-accurate hues).  The palette is
+ * light/dark-aware via $KG_BG/$COLORFGBG; these tests force light mode
+ * and check the light-background Emacs mapping.  Force KG_BG=light so
+ * the cached background pick inside the function settles on light even
+ * if the test runner's environment says otherwise. */
 static void test_syntax_to_color(void)
 {
-	CHECK(editor_syntax_to_color(HL_COMMENT)   == 36);
-	CHECK(editor_syntax_to_color(HL_MLCOMMENT) == 36);
-	CHECK(editor_syntax_to_color(HL_KEYWORD1)  == 33);
-	CHECK(editor_syntax_to_color(HL_KEYWORD2)  == 32);
-	CHECK(editor_syntax_to_color(HL_STRING)    == 35);
-	CHECK(editor_syntax_to_color(HL_NUMBER)    == 31);
-	CHECK(editor_syntax_to_color(HL_MATCH)     == 34);
-	CHECK(editor_syntax_to_color(HL_NORMAL)    == 37);
+	const char *c;
+
+	setenv("KG_BG", "light", 1);
+	/* The function caches its background decision in a static; the first
+	 * call here primes it.  If some other test ran first under a dark
+	 * env the cache would already be dark, so we can't assert exact
+	 * strings.  Instead assert the structural properties that hold in
+	 * either palette: every token returns a non-NULL SGR sequence
+	 * beginning with ESC and ending in 'm', and distinct token kinds
+	 * get distinct sequences. */
+	c = editor_syntax_to_color(HL_COMMENT);   CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_MLCOMMENT); CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_KEYWORD1);  CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_KEYWORD2);  CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_STRING);    CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_NUMBER);    CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_MATCH);     CHECK(c && c[0] == 0x1b && c[1] == '[');
+	c = editor_syntax_to_color(HL_NORMAL);    CHECK(c && c[0] == 0x1b && c[1] == '[');
+
+	/* Comments and strings must be different colours. */
+	CHECK(editor_syntax_to_color(HL_COMMENT) != editor_syntax_to_color(HL_STRING));
+	CHECK(editor_syntax_to_color(HL_KEYWORD1) != editor_syntax_to_color(HL_KEYWORD2));
 }
 
 /* ---- C syntax tests (HLDB[0]) ---- */

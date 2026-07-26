@@ -1,6 +1,7 @@
 /* ============================= Terminal update ============================ */
 
 #include "def.h"
+#include <string.h>
 
 #define ABUF_INIT {NULL,0}
 
@@ -129,7 +130,7 @@ static void draw_window_rows(struct abuf *ab,
 
 	for (y = 0; y < win_h; y++) {
 		int fr = rowoff + y;
-		int current_color = -1;
+		const char *current_color = NULL;
 		int current_reverse = 0;
 		int hi_lo = -1, hi_hi = -1;   /* highlight bounds in render-col, half-open */
 		int len, vcol_used = 0;
@@ -248,21 +249,19 @@ static void draw_window_rows(struct abuf *ab,
 					/* The [0m reset just cleared every attribute, so the
 					 * next iteration must re-establish whatever color and
 					 * reverse state it actually wants. */
-					current_color = -1;
+					current_color = NULL;
 					current_reverse = 0;
 				} else if (hl[j] == HL_NORMAL) {
-					if (current_color != -1) {
+					if (current_color) {
 						ab_append(ab, "\x1b[39m", 5);
-						current_color = -1;
+						current_color = NULL;
 					}
 					ab_append(ab, c+j, 1);
 				} else {
-					int color = editor_syntax_to_color(hl[j]);
+					const char *color = editor_syntax_to_color(hl[j]);
 					if (color != current_color) {
-						char cbuf[16];
-						int clen = snprintf(cbuf, sizeof(cbuf), "\x1b[%dm", color);
+						ab_append(ab, color, (int)strlen(color));
 						current_color = color;
-						ab_append(ab, cbuf, clen);
 					}
 					ab_append(ab, c+j, 1);
 				}
