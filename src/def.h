@@ -216,7 +216,12 @@ enum KEY_ACTION {
 	KEY_F2,        /* F2: save buffer */
 	KEY_F3,        /* F3: start keyboard macro */
 	KEY_F4,        /* F4: stop or replay keyboard macro */
-	KEY_F10        /* F10: quit */
+	KEY_F10,       /* F10: quit */
+	/* Mouse events (SGR/1006 encoding). The screen coordinates of the
+	 * last mouse event are in mouse_col / mouse_row (1-based). */
+	MOUSE_CLICK,
+	MOUSE_WHEEL_UP,
+	MOUSE_WHEEL_DOWN
 };
 
 /* Syntax highlight definition */
@@ -388,6 +393,7 @@ struct editor_buffer {
 /* Global editor state */
 extern struct editor_config editor;
 extern int kg_bg_dark;      /* OSC 11 startup probe: 1=dark, 0=light, -1=unknown */
+extern int mouse_col, mouse_row;  /* last mouse event, 1-based screen coords */
 extern int running;
 extern int suppress_undo;
 extern struct kill_ring killring;

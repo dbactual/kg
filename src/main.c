@@ -39,6 +39,7 @@ int suppress_undo = 0;
 int global_auto_revert = 0;
 int make_backup_files = 1;
 int kg_bg_dark = -1;     /* set by the OSC 11 startup probe in main() */
+int mouse_col = 0, mouse_row = 0;  /* last mouse event, 1-based screen coords */
 int require_final_newline = 0;
 
 void init_editor(void)
