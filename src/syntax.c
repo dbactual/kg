@@ -1164,6 +1164,9 @@ static int vc_dark_background(void)
 			if (b >= 8) return 1;
 		}
 	}
+	/* Fallback: the OSC 11 background-colour query run once at startup
+	 * (see main).  -1 means the terminal didn't answer. */
+	if (kg_bg_dark >= 0) return kg_bg_dark;
 	return 0;
 }
 

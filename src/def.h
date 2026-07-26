@@ -71,6 +71,10 @@ static inline void tty_write(const void *buf, size_t n)
 	(void)r;
 }
 
+/* Query the terminal background colour (OSC 11) and report dark/light.
+ * Must be called after raw mode is enabled.  1=dark, 0=light, -1=unknown. */
+int tty_query_background(int fd);
+
 /* Syntax highlight types */
 #define HL_NORMAL 0
 #define HL_NONPRINT 1
@@ -382,6 +386,7 @@ struct editor_buffer {
 
 /* Global editor state */
 extern struct editor_config editor;
+extern int kg_bg_dark;      /* OSC 11 startup probe: 1=dark, 0=light, -1=unknown */
 extern int running;
 extern int suppress_undo;
 extern struct kill_ring killring;

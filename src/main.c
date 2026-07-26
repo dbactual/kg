@@ -38,6 +38,7 @@ int running = 1;
 int suppress_undo = 0;
 int global_auto_revert = 0;
 int make_backup_files = 1;
+int kg_bg_dark = -1;     /* set by the OSC 11 startup probe in main() */
 int require_final_newline = 0;
 
 void init_editor(void)
@@ -124,6 +125,14 @@ int main(int argc, char **argv)
 	init_editor();
 	buf_load_args(argc - optind, argv + optind, readonly);
 	enable_raw_mode(STDIN_FILENO);
+
+	/* Probe the terminal background once, before the first screen render,
+	 * so the syntax palette can auto-pick its dark/light variant without
+	 * requiring $KG_BG.  Only consults the probe when $KG_BG/$COLORFGBG
+	 * are unset (see vc_dark_background).  Harmless on terminals that
+	 * don't answer OSC 11: the read times out in ~200ms. */
+	kg_bg_dark = tty_query_background(STDIN_FILENO);
+
 	editor_set_status_message("Press Ctrl-h for help");
 	while (running) {
 		editor_process_pending_resize();

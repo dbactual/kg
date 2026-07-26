@@ -81,6 +81,83 @@ fatal:
 	return -1;
 }
 
+/* Query the terminal's background colour via OSC 11 and decide whether it
+ * is "dark" (low luminance).  Must be called after enable_raw_mode() so the
+ * reply can be read with the raw VMIN=0/VTIME=1 read timeout.  Returns:
+ *    1 = dark background, 0 = light background, -1 = no reply / unparseable.
+ *
+ * Sends "\x1b]11;?\x07" (query background).  A replying terminal responds
+ * with "\x1b]11;rgb:RRRR/GGGG/BBBB\x07" (16-bit-per-channel, the common
+ * xterm/Alacritty form) or "rgb:RR/GG/BB" (8-bit shorthand) or
+ * "rgb:R/G/B" (4-bit).  Some terminals answer with "#RRGGBB".  We parse the
+ * first three hex components after "rgb:" (or after '#'), normalise each to
+ * 0-255, and compute luminance Y = 0.299r + 0.587g + 0.114b.  Y < 0.5
+ * counts as dark.  The read loop gives up after ~200ms total so a silent
+ * terminal (or one that doesn't know OSC 11) doesn't stall startup. */
+int tty_query_background(int fd)
+{
+	char buf[64];
+	int len = 0;
+	struct timeval start, now;
+	int r, g, b, got, i;
+
+	tty_write("\x1b]11;?\x07", 8);
+
+	gettimeofday(&start, NULL);
+	while (len < (int)sizeof(buf) - 1) {
+		ssize_t n = read(fd, buf + len, (int)sizeof(buf) - 1 - len);
+		if (n > 0) {
+			len += n;
+			/* Stop as soon as we see the ST terminator (BEL \x07 or
+			 * ESC \).  Anything after it is a keypress we must not
+			 * consume — leave it for the editor's key loop. */
+			if (memchr(buf, '\x07', len) ||
+			    (len >= 2 && buf[len-2] == 0x1b && buf[len-1] == '\\'))
+				break;
+			continue;
+		}
+		gettimeofday(&now, NULL);
+		if ((now.tv_sec - start.tv_sec) * 1000 +
+		    (now.tv_usec - start.tv_usec) / 1000 > 200)
+			break;
+	}
+	buf[len] = '\0';
+
+	/* Expected: "\x1b]11;rgb:RRRR/GGGG/BBBB\x07" or "#RRGGBB\x07". */
+	r = g = b = -1;
+	{
+		const char *p = strstr(buf, "rgb:");
+		if (p) {
+			p += 4;
+			r = (int)strtol(p, (char **)&p, 16);
+			if (*p == '/' || *p == ':') p++;
+			g = (int)strtol(p, (char **)&p, 16);
+			if (*p == '/' || *p == ':') p++;
+			b = (int)strtol(p, (char **)&p, 16);
+		} else {
+			const char *h = memchr(buf, '#', len);
+			if (h) {
+				r = (int)strtol(h + 1, (char **)&p, 16);
+				if (*p) p++;
+				g = (int)strtol(p, (char **)&p, 16);
+				if (*p) p++;
+				b = (int)strtol(p, (char **)&p, 16);
+			}
+		}
+	}
+	if (r < 0 || g < 0 || b < 0) return -1;
+
+	/* Normalise to 8-bit regardless of source precision.  xterm-style
+	 * 16-bit replies are multiples of 0x101; 4-bit are *0x11; etc.  The
+	 * ">> 8" + clamp handles 16-bit; for 8-bit/4-bit it's a no-op-ish. */
+#define NORM(v) ((v) > 255 ? (((v) >> 8) > 255 ? 255 : ((v) >> 8)) : (v))
+	r = NORM(r); g = NORM(g); b = NORM(b);
+#undef NORM
+	(void)i; (void)got;
+	/* Relative luminance (Rec.601, good enough for "dark vs light"). */
+	return (0.299 * r + 0.587 * g + 0.114 * b) < 128 ? 1 : 0;
+}
+
 /* Decode an escape sequence (ESC byte already consumed) into a key code. */
 static int parse_escape(int fd)
 {
