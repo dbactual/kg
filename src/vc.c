@@ -177,6 +177,12 @@ static const char *vc_status_word(char x, char y)
  * set by vc_dir_diff() before opening the buffer. */
 static char vc_filediff_path[512];
 
+/* Filename of the buffer that was active when *vc-diff* was opened, so
+ * TAB/q in *vc-diff* can return to it (likely *vc-dir*, but not necessarily
+ * — the diff could be opened another way in the future).  Empty if no
+ * prior buffer was recorded. */
+static char vc_filediff_prev[256];
+
 static void vc_filediff_populate(void)
 {
 	char cmd[600];
@@ -216,9 +222,15 @@ static void vc_filediff_populate(void)
  * Enter jumps to the hunk's file:line via vc_diff_select). */
 static void vc_open_filediff(const char *path)
 {
+	/* Remember the buffer we're leaving so TAB/q can return to it. */
+	if (editor.filename)
+		snprintf(vc_filediff_prev, sizeof vc_filediff_prev, "%s", editor.filename);
+	else
+		vc_filediff_prev[0] = '\0';
+
 	snprintf(vc_filediff_path, sizeof(vc_filediff_path), "%s", path);
 	buf_open_special(VC_FILEDIFF_NAME, &diff_syntax_rec, vc_filediff_populate,
-	                 "file diff — RET to jump to hunk, q to close.");
+	                 "file diff — RET to jump to hunk, TAB/q to close.");
 	vc_rehighlight();
 }
 
@@ -458,22 +470,32 @@ void vc_dir_diff(void)
 	editor_set_status_message("git diff HEAD -- %s", path);
 }
 
-/* Close the per-file *vc-diff* buffer and return to *vc-dir*.  Bound to
- * TAB in *vc-diff* (the same key that opened it from *vc-dir*).  Kills
- * the diff buffer and restores the vc-dir slot if it still exists;
- * otherwise buf_kill's fallback takes us to the nearest buffer. */
+/* Close the per-file *vc-diff* buffer and return to the buffer that was
+ * active when the diff was opened (usually *vc-dir*).  Bound to both TAB
+ * and q in *vc-diff*.  Kills the diff buffer and restores the recorded
+ * prior buffer if it is still open; otherwise buf_kill's nearest-buffer
+ * fallback takes us somewhere sane. */
 void vc_filediff_close(int fd)
 {
+	char prev[256];
 	int slot;
 
 	if (editor.syntax != &diff_syntax_rec) return;
 	if (!editor.filename || strcmp(editor.filename, VC_FILEDIFF_NAME) != 0) return;
 
-	slot = buf_find_by_filename(VC_DIR_NAME);
+	/* Snapshot the prior buffer before buf_kill can touch buflist. */
+	snprintf(prev, sizeof prev, "%s", vc_filediff_prev);
+	vc_filediff_prev[0] = '\0';
+
+	slot = prev[0] ? buf_find_by_filename(prev) : -1;
 	buf_kill(fd);
 	if (slot >= 0 && buflist[slot].active) {
-		buf_open_path(VC_DIR_NAME, 1);
-		editor_set_status_message("VC-dir — RET to open file, TAB to diff, q to close.");
+		buf_open_path(prev, 1);
+		/* Restore vc-dir's status hint, or echo the filename we returned to. */
+		if (strcmp(prev, VC_DIR_NAME) == 0)
+			editor_set_status_message("VC-dir — RET to open file, TAB to diff, q to close.");
+		else
+			editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");
 	}
 }
 

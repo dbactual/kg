@@ -305,8 +305,16 @@ void editor_process_keypress(int fd)
 		n = 1;
 	}
 
-	/* q closes special *...* buffers, but only if another buffer exists */
+	/* q closes special *...* buffers, but only if another buffer exists.
+	 * In the per-file *vc-diff* buffer, q returns to the buffer that was
+	 * active when the diff was opened (usually *vc-dir*) rather than the
+	 * generic nearest-buffer fallback. */
 	if (c == 'q' && is_special_buffer(editor.filename) && buf_count > 1) {
+		if (editor.syntax && (editor.syntax->flags & SHL_DIFF) &&
+		    editor.filename && strcmp(editor.filename, "*vc-diff*") == 0) {
+			vc_filediff_close(fd);
+			return;
+		}
 		buf_kill(fd);
 		return;
 	}
