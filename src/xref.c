@@ -488,6 +488,53 @@ static void xref_rehighlight(void)
 		editor_update_row(&editor.row[i]);
 }
 
+/* Find the project root above the current file: the nearest ancestor
+ * directory containing a project marker (.git, Makefile, package.json,
+ * Cargo.toml, .hg, .svn, TAGS).  Writes the absolute path to rootbuf and
+ * returns 1, or returns 0 (rootbuf untouched) if no marker is found. */
+static int xref_find_root(char *rootbuf, int rootsize)
+{
+	char dir[1024];
+	char *slash;
+
+	if (!editor.filename) return 0;
+	/* Start from the current file's directory. */
+	snprintf(dir, sizeof dir, "%s", editor.filename);
+	slash = strrchr(dir, '/');
+	if (!slash) return 0;
+	*slash = '\0';   /* truncate to dir */
+
+	/* Walk up, checking each ancestor for a marker. */
+	while (1) {
+		static const char *markers[] = {
+			".git", "Makefile", "package.json", "Cargo.toml",
+			".hg", ".svn", "TAGS", NULL
+		};
+		int i;
+		for (i = 0; markers[i]; i++) {
+			char probe[1100];
+			struct stat st;
+			snprintf(probe, sizeof probe, "%s/%s", dir, markers[i]);
+			if (stat(probe, &st) == 0) {
+				snprintf(rootbuf, rootsize, "%s", dir);
+				return 1;
+			}
+		}
+		/* Go up one level. */
+		slash = strrchr(dir, '/');
+		if (!slash) {
+			/* No slash left: the current dir is a bare name like "lib".
+			 * Try "." (the parent) as the next level up. */
+			if (!strcmp(dir, ".")) break;
+			strcpy(dir, ".");
+			continue;
+		}
+		if (slash == dir) break;   /* at filesystem root, stop */
+		*slash = '\0';
+	}
+	return 0;
+}
+
 /* Public: run the search and either jump (single match) or open *xref*. */
 void xref_find_definitions(void)
 {
@@ -510,19 +557,23 @@ void xref_find_definitions(void)
 
 	/* Then walk files on disk so a definition in an unopened file (the
 	 * common case when M-. is invoked from a call site) is found.  Walk
-	 * from the current file's directory, falling back to "." — this keeps
-	 * the search local to the project rather than the whole filesystem. */
+	 * from the project root (detected by walking up for .git/Makefile/
+	 * package.json/Cargo.toml/.hg/.svn/TAGS) so M-. from src/foo.c finds
+	 * defs in any sibling dir; fall back to the current file's directory,
+	 * then ".", if no project marker is found. */
 	if (lang) {
-		char dirbuf[256];
+		char rootbuf[1024];
 		const char *dir = ".";
-		if (editor.filename) {
+		if (xref_find_root(rootbuf, sizeof rootbuf)) {
+			dir = rootbuf;
+		} else if (editor.filename) {
 			const char *slash = strrchr(editor.filename, '/');
 			if (slash) {
 				int dl = slash - editor.filename;
-				if (dl >= (int)sizeof dirbuf) dl = (int)sizeof dirbuf - 1;
-				memcpy(dirbuf, editor.filename, dl);
-				dirbuf[dl] = '\0';
-				dir = dirbuf;
+				if (dl >= (int)sizeof rootbuf) dl = (int)sizeof rootbuf - 1;
+				memcpy(rootbuf, editor.filename, dl);
+				rootbuf[dl] = '\0';
+				dir = rootbuf;
 			}
 		}
 		xref_file_count = 0;
