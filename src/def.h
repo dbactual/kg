@@ -478,6 +478,8 @@ void win_enlarge_h(int n);
 void win_balance(void);
 void win_delete_current(void);
 void win_delete_others(void);
+void editor_mouse_click(int col, int row);
+void editor_mouse_wheel(int dir);
 
 /* autocomplete.c */
 int editor_find_close_char(int open_char);

@@ -149,6 +149,24 @@ void editor_process_keypress(int fd)
 	}
 	editor.last_char_time = tv;
 
+	/* Mouse events: a click focuses the window under the pointer and
+	 * moves point there; the wheel scrolls the active window.  These
+	 * run before the prefix/readonly filters so a click repositions
+	 * point even in a read-only or special buffer. */
+	if (c == MOUSE_CLICK) {
+		editor_mouse_click(mouse_col, mouse_row);
+		/* A click clears any in-progress prefix and the shift-select
+		 * region, like a cursor jump. */
+		editor.cx_prefix = 0;
+		editor.rect_prefix = 0;
+		editor.vc_prefix = 0;
+		editor.mark_highlight = 0;
+		editor.shift_select = 0;
+		return;
+	}
+	if (c == MOUSE_WHEEL_UP)   { editor_mouse_wheel(-3); return; }
+	if (c == MOUSE_WHEEL_DOWN) { editor_mouse_wheel( 3); return; }
+
 	/* Handle C-x r rectangle ops (second key after C-x r).  Every op
 	 * here mutates the buffer, so a read-only buffer rejects them
 	 * outright; only C-g (cancel) still has any business reaching

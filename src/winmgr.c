@@ -697,3 +697,61 @@ void win_term_resize(void)
 	win_fit_axis(0);
 	win_sync_view();
 }
+
+/* ---- Mouse support ----------------------------------------------------- */
+
+/* Find the window containing the 1-based screen cell (col,row), or -1. */
+static int win_at_screen(int col, int row)
+{
+	int i;
+	for (i = 0; i < MAX_WINDOWS; i++) {
+		struct editor_window *p = &winlist[i];
+		if (p->active &&
+		    p->y <= row && row < p->y + p->h &&
+		    p->x <= col && col < p->x + p->w)
+			return i;
+	}
+	return -1;
+}
+
+/* A left-click landed at 1-based screen (col,row): focus the window it's
+ * in and move point to the corresponding buffer position.  Clicks on the
+ * mode line (row == w->y + w->h) or outside any window are ignored. */
+void editor_mouse_click(int col, int row)
+{
+	int wi, winrow, wincol, filerow, vcol, filecol;
+	erow *r;
+
+	wi = win_at_screen(col, row);
+	if (wi < 0) return;
+	if (wi != win_current) win_focus(wi);
+
+	winrow = row - winlist[win_current].y;       /* 0-based */
+	wincol = col - winlist[win_current].x;       /* 0-based */
+
+	filerow = winlist[win_current].rowoff + winrow;
+	if (filerow < 0) filerow = 0;
+	if (filerow >= editor.numrows) filerow = editor.numrows - 1;
+	if (filerow < 0) { editor_cursor_goto(0, 0); return; }  /* empty buffer */
+
+	r = &editor.row[filerow];
+	vcol = winlist[win_current].coloff + wincol;
+	filecol = editor_chars_col_at_visual(r, vcol);
+	if (filecol > r->size) filecol = r->size;
+
+	editor_cursor_goto(filerow, filecol);
+}
+
+/* Mouse wheel: scroll the active window by `dir` rows (+=down, -=up).
+ * Does not move point.  Clamps rowoff to [0, numrows-screenrows]. */
+void editor_mouse_wheel(int dir)
+{
+	int maxoff;
+
+	(void)dir;
+	maxoff = editor.numrows - editor.screenrows;
+	if (maxoff < 0) maxoff = 0;
+	editor.rowoff += dir;
+	if (editor.rowoff < 0) editor.rowoff = 0;
+	if (editor.rowoff > maxoff) editor.rowoff = maxoff;
+}
