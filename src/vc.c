@@ -28,9 +28,14 @@ static struct editor_syntax gitstatus_syntax = {
 static struct editor_syntax diff_syntax_rec = {
 	"Diff", NULL, NULL, "", "", "", SHL_DIFF
 };
+static struct editor_syntax gitlog_syntax = {
+	"GitLog", NULL, NULL, "", "", "", SHL_GITLOG
+};
 
 #define VC_STATUS_NAME "*git-status*"
 #define VC_DIFF_NAME   "*git-diff*"
+#define VC_LOG_NAME    "*git-log*"
+#define VC_SHOW_NAME   "*git-show*"
 
 /* Run `cmd` and insert its stdout into the current (just-reset) buffer one
  * row per line.  On failure, leave a single error row. */
@@ -87,6 +92,40 @@ void vc_open_diff(void)
 {
 	buf_open_special(VC_DIFF_NAME, &diff_syntax_rec, vc_diff_populate,
 	                 "git diff — RET to jump to hunk, q to close.");
+	vc_rehighlight();
+}
+
+static void vc_log_populate(void)
+{
+	vc_insert_command_output("git log");
+}
+
+void vc_open_log(void)
+{
+	buf_open_special(VC_LOG_NAME, &gitlog_syntax, vc_log_populate,
+	                 "git log — RET to show commit, q to close.");
+	vc_rehighlight();
+}
+
+/* The commit hash being shown by vc_show_populate(); set by
+ * vc_log_select() before it triggers buf_open_special(). */
+static char vc_show_hash[64];
+
+static void vc_show_populate(void)
+{
+	char cmd[96];
+
+	snprintf(cmd, sizeof(cmd), "git show %s", vc_show_hash);
+	vc_insert_command_output(cmd);
+}
+
+/* Open `git show <hash>` in a *git-show* buffer with diff highlighting.
+ * Used by vc_log_select(). */
+static void vc_open_show(const char *hash)
+{
+	snprintf(vc_show_hash, sizeof(vc_show_hash), "%s", hash);
+	buf_open_special(VC_SHOW_NAME, &diff_syntax_rec, vc_show_populate,
+	                 "git show — RET to jump to hunk, q to close.");
 	vc_rehighlight();
 }
 
@@ -248,4 +287,36 @@ void vc_diff_select(void)
 		editor_goto_line_direct(new_line, 1);
 		editor_set_status_message("%s:%d", editor.filename ? editor.filename : "[new]", new_line);
 	}
+}
+
+void vc_log_select(void)
+{
+	int filerow = editor.rowoff + editor.cy;
+	int row;
+	char hash[64];
+
+	if (editor.syntax != &gitlog_syntax) return;
+	if (filerow < 0 || filerow >= editor.numrows) return;
+
+	/* Scan upward for the nearest "commit <hex>" header. */
+	for (row = filerow; row >= 0; row--) {
+		const char *s = editor.row[row].chars;
+		int slen = editor.row[row].size;
+		int hlen, i;
+
+		if (slen < 8 || strncmp(s, "commit ", 7) != 0) continue;
+		/* Copy the hex token (up to 40 chars) after "commit ". */
+		s += 7; slen -= 7;
+		hlen = 0;
+		while (hlen < slen && hlen < 40 && isxdigit((unsigned char)s[hlen]))
+			hlen++;
+		if (hlen < 7) break; /* not a real hash line */
+		if (hlen >= (int)sizeof(hash)) hlen = (int)sizeof(hash) - 1;
+		memcpy(hash, s, hlen);
+		hash[hlen] = '\0';
+		vc_open_show(hash);
+		editor_set_status_message("git show %s", hash);
+		return;
+	}
+	editor_set_status_message("No commit above point");
 }

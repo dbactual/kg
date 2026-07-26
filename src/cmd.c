@@ -131,6 +131,7 @@ static void cmd_shell_command_on_region(int fd) { editor_shell_command_on_region
 /* vc-mode: open a *git-status* or *git-diff* buffer (also on C-x v s / d). */
 static void cmd_vc_status(int fd) { (void)fd; vc_open_status(); }
 static void cmd_vc_diff(int fd)   { (void)fd; vc_open_diff();   }
+static void cmd_vc_log(int fd)    { (void)fd; vc_open_log();    }
 
 /* Toggle auto-revert on the current buffer.  When on (or when the global
  * setting below is on), a clean buffer whose underlying file has changed on
@@ -270,6 +271,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "transpose-chars",          cmd_transpose_chars,         CMD_EDITS_BUFFER },
 	{ "upcase-word",              cmd_upcase_word,             CMD_EDITS_BUFFER },
 	{ "vc-diff",                  cmd_vc_diff,                 CMD_NONE },
+	{ "vc-log",                   cmd_vc_log,                  CMD_NONE },
 	{ "vc-status",                cmd_vc_status,               CMD_NONE },
 	{ "version",                  cmd_version,                 CMD_NONE },
 	{ "what-cursor-position",     cmd_what_cursor_position,    CMD_NONE },

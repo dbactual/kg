@@ -178,6 +178,7 @@ void editor_process_keypress(int fd)
 		switch (c) {
 		case 's':              vc_open_status(); break;
 		case 'd':              vc_open_diff();   break;
+		case 'l':              vc_open_log();    break;
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-x v %c is undefined", c); break;
 		}
@@ -317,6 +318,7 @@ void editor_process_keypress(int fd)
 		if (editor.syntax) {
 			if (editor.syntax->flags & SHL_GITSTATUS) { vc_status_select(); return; }
 			if (editor.syntax->flags & SHL_DIFF)      { vc_diff_select();   return; }
+			if (editor.syntax->flags & SHL_GITLOG)    { vc_log_select();    return; }
 			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
 		}
 		buf_ibuffer_select();

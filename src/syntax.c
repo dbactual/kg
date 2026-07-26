@@ -843,6 +843,27 @@ static void gitstatus_syntax(erow *row)
 	row->hl[0] = HL_COMMENT; row->hl[1] = HL_COMMENT;
 }
 
+/* `git log` highlighter (vc-mode *git-log* buffer).
+ *   "commit <hex>"        → magenta (whole line, the commit header)
+ *   "Author:" / "Date:"   → cyan    (whole line)
+ *   "Merge: <hashes>"     → cyan    (whole line)
+ *   everything else (the
+ *    indented message and
+ *    a --stat tail)       → normal
+ */
+static void gitlog_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+
+	if (len <= 0) return;
+	if (!strncmp(p, "commit ", 7)) { memset(row->hl, HL_STRING, len); return; }
+	if (!strncmp(p, "Author:", 7)) { memset(row->hl, HL_COMMENT, len); return; }
+	if (!strncmp(p, "Date:",   5)) { memset(row->hl, HL_COMMENT, len); return; }
+	if (!strncmp(p, "Merge:",  6)) { memset(row->hl, HL_COMMENT, len); return; }
+	/* leave HL_NORMAL */
+}
+
 /* Set every byte of row->hl (that corresponds to every character in the line)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
@@ -878,6 +899,11 @@ void editor_update_syntax(erow *row)
 
 	if (editor.syntax->flags & SHL_GITSTATUS) {
 		gitstatus_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GITLOG) {
+		gitlog_syntax(row);
 		return;
 	}
 

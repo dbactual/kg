@@ -89,6 +89,7 @@ static inline void tty_write(const void *buf, size_t n)
 #define SHL_IBUFFER          (1<<4) /* *Buffer List* select-on-Enter mode. */
 #define SHL_DIFF             (1<<5) /* unified-diff highlighter (vc-mode). */
 #define SHL_GITSTATUS        (1<<6) /* git status --porcelain highlighter.  */
+#define SHL_GITLOG           (1<<7) /* git log highlighter (vc-mode).       */
 
 /* Key action codes */
 enum KEY_ACTION {
@@ -436,8 +437,10 @@ void buf_open_special(const char *name, struct editor_syntax *syn,
                       void (*populate)(void), const char *status);
 void vc_open_status(void);
 void vc_open_diff(void);
+void vc_open_log(void);
 void vc_status_select(void);
 void vc_diff_select(void);
+void vc_log_select(void);
 void buf_display_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */
