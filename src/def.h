@@ -280,6 +280,7 @@ struct editor_config {
 	int shift_select;   /* 1 when the active region was started by shift+motion. */
 	int rect_mode;      /* 1 when the region should render as a rectangle. */
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
+	int vc_prefix;      /* 1 after C-x v, waiting for the vc-mode op key. */
 	int desired_visual_col; /* goal column across vertical motion; -1 = unset. */
 	int readonly;       /* If 1, buffer is read-only (editing is blocked). */
 	int last_key;       /* Last key processed, for command repetition logic. */
@@ -429,6 +430,14 @@ int buf_save_all(int fd);
 void buf_open_list(void);
 void buf_open_help(void);
 void buf_ibuffer_select(void);
+int  buf_find_by_filename(const char *fn);
+int  buf_open_path(const char *path, int readonly);
+void buf_open_special(const char *name, struct editor_syntax *syn,
+                      void (*populate)(void), const char *status);
+void vc_open_status(void);
+void vc_open_diff(void);
+void vc_status_select(void);
+void vc_diff_select(void);
 void buf_display_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */

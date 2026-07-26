@@ -170,6 +170,20 @@ void editor_process_keypress(int fd)
 		return;
 	}
 
+	/* Handle C-x v vc-mode ops (second key after C-x v).  These open
+	 * special read-only buffers; they don't mutate the current buffer,
+	 * so a read-only buffer is fine.  Only C-g cancels. */
+	if (editor.vc_prefix) {
+		editor.vc_prefix = 0;
+		switch (c) {
+		case 's':              vc_open_status(); break;
+		case 'd':              vc_open_diff();   break;
+		case CTRL_G:           editor_set_status_message(""); break;
+		default:               editor_set_status_message("C-x v %c is undefined", c); break;
+		}
+		return;
+	}
+
 	/* Handle C-x prefix commands */
 	if (editor.cx_prefix) {
 		editor.cx_prefix = 0;
@@ -257,6 +271,10 @@ void editor_process_keypress(int fd)
 			editor.rect_prefix = 1;
 			editor_set_status_message("C-x r-");
 			break;
+		case 'v':       /* C-x v-: vc-mode prefix */
+			editor.vc_prefix = 1;
+			editor_set_status_message("C-x v-");
+			break;
 		case CTRL_G:    /* C-x C-g: Cancel C-x prefix */
 			editor_set_status_message("");
 			break;
@@ -288,10 +306,19 @@ void editor_process_keypress(int fd)
 		return;
 	}
 
-	/* In a read-only buffer such as the *Buffer List*, Enter opens the item
-	 * at point.  Editing itself is refused by the mutation commands, which
-	 * bail via editor_readonly_blocked(). */
+	/* In a read-only special buffer, Enter opens the item at point.
+	 * Which handler runs depends on the buffer's syntax flag:
+	 *   SHL_IBUFFER   → *Buffer List*  (open the named buffer)
+	 *   SHL_GITSTATUS → *git-status*   (open the file at line 1)
+	 *   SHL_DIFF      → *git-diff*     (open the file at the hunk line)
+	 * Editing itself is refused by the mutation commands, which bail
+	 * via editor_readonly_blocked(). */
 	if (editor.readonly && c == ENTER) {
+		if (editor.syntax) {
+			if (editor.syntax->flags & SHL_GITSTATUS) { vc_status_select(); return; }
+			if (editor.syntax->flags & SHL_DIFF)      { vc_diff_select();   return; }
+			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
+		}
 		buf_ibuffer_select();
 		return;
 	}

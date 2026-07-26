@@ -863,50 +863,76 @@ void buf_select_interactive(int fd)
 	}
 }
 
+/* Find the slot of the active buffer whose stored filename equals `fn`,
+ * or -1 if none.  Compares the full stored path, like the existing-buffer
+ * check that used to live inline in buf_open_file_ro. */
+int buf_find_by_filename(const char *fn)
+{
+	int i;
+
+	if (!fn) return -1;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (buflist[i].active && buflist[i].filename &&
+		    strcmp(buflist[i].filename, fn) == 0)
+			return i;
+	}
+	return -1;
+}
+
+/* Open `path` in a buffer, switching to it.  If the file is already open
+ * in an existing buffer, just switch to that slot.  Otherwise load it into
+ * a free slot (creating one if needed), mirroring the tail of the old
+ * buf_open_file_ro.  `readonly` marks a freshly loaded buffer read-only;
+ * an already-open buffer keeps its own readonly state.  Returns the slot
+ * index on success, -1 on failure (too many buffers). */
+int buf_open_path(const char *path, int readonly)
+{
+	int i, slot;
+
+	slot = buf_find_by_filename(path);
+	if (slot >= 0) {
+		buf_save_current_state();
+		buf_restore_from_slot(slot);
+		return slot;
+	}
+
+	if (buf_count >= MAX_BUFFERS) {
+		editor_set_status_message("Too many open buffers (%d max).", MAX_BUFFERS);
+		return -1;
+	}
+
+	slot = -1;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (!buflist[i].active) { slot = i; break; }
+	}
+	if (slot < 0) return -1; /* should not happen given buf_count check above */
+
+	buf_save_current_state();
+	buf_reset();
+	editor.readonly = readonly;
+	editor_select_syntax_highlight((char *)path);
+	editor_open((char *)path);
+	buf_save_to_slot(slot);
+	buf_restore_from_slot(slot);
+	buf_count++;
+	return slot;
+}
+
 /* Open a file in a new buffer, prompting for the filename.  If the file is
  * already open in an existing buffer, switch to it instead.
  * readonly: if 1, mark the buffer read-only after loading. */
 static void buf_open_file_ro(int fd, int readonly)
 {
 	char query[256];
-	int i, slot;
 	const char *prompt = readonly ? "Open file read-only: " : "Open file: ";
+	int slot;
 
 	editor_prompt_prefill_dir(query, sizeof(query));
 	if (editor_read_line_path(fd, prompt, query, sizeof(query)) < 0 || query[0] == '\0')
 		return;
 
-	/* Switch to existing buffer if the file is already open. */
-	for (i = 0; i < MAX_BUFFERS; i++) {
-		if (buflist[i].active && buflist[i].filename &&
-		    strcmp(buflist[i].filename, query) == 0) {
-			buf_save_current_state();
-			buf_restore_from_slot(i);
-			editor_set_status_message("%s", editor.filename);
-			return;
-		}
-	}
-
-	if (buf_count >= MAX_BUFFERS) {
-		editor_set_status_message("Too many open buffers (%d max).", MAX_BUFFERS);
-		return;
-	}
-
-	/* Find a free slot. */
-	slot = -1;
-	for (i = 0; i < MAX_BUFFERS; i++) {
-		if (!buflist[i].active) { slot = i; break; }
-	}
-	if (slot < 0) return; /* should not happen given buf_count check above */
-
-	buf_save_current_state();
-	buf_reset();
-	editor.readonly = readonly;
-	editor_select_syntax_highlight(query);
-	editor_open(query);
-	buf_save_to_slot(slot);
-	buf_restore_from_slot(slot);
-	buf_count++;
+	slot = buf_open_path(query, readonly);
+	if (slot < 0) return;
 	editor_set_status_message("%s%s", editor.filename ? editor.filename : "[new]",
 		editor.readonly ? " [read-only]" : "");
 }
@@ -1029,8 +1055,8 @@ void buf_kill(int fd)
  * find or allocate its slot, clear any prior content, run `populate`
  * to fill rows, then mark the buffer read-only, attach `syn`, and
  * post `status`.  Shared by buf_open_list and buf_open_help. */
-static void buf_open_special(const char *name, struct editor_syntax *syn,
-                             void (*populate)(void), const char *status)
+void buf_open_special(const char *name, struct editor_syntax *syn,
+                      void (*populate)(void), const char *status)
 {
 	int i, slot = -1, existing = -1;
 
