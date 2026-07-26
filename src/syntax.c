@@ -1113,33 +1113,39 @@ void editor_update_syntax(erow *row)
 	row->hl_oc = oc;
 }
 
-/* Emacs default font-lock colors.
+/* Emacs default font-lock colors, as exact RGB.
  *
  * Emacs ships two palettes in font-lock.el, selected by frame background:
  *   (background light)  — Firebrick comments, Purple keywords, Blue
  *                         function names, ForestGreen types, RosyBrown
  *                         strings, DarkCyan constants
- *   (background dark)   — chocolate1 comments, Cyan keywords, LightSkyBlue
+ *   (background dark)   — chocolate1 comments, Cyan1 keywords, LightSkyBlue
  *                         function names, PaleGreen types, LightSalmon
  *                         strings, Aquamarine constants
  *
- * Many of these hues have no match in the 8/16-colour ANSI set, so the
- * sequences below use 256-colour SGR (`\x1b[38;5;Nm`) — editor_syntax_to_color
- * now returns the whole escape string and display.c emits it verbatim.
+ * These hues have no match in the 8/16-colour ANSI set, and the 216-colour
+ * 256-palette cube is too coarse (its primaries are saturated and garish),
+ * so editor_syntax_to_color returns full 24-bit true-colour SGR
+ * ("\x1b[38;2;R;G;Bm") when the terminal advertises truecolor, and falls
+ * back to the nearest 256-cube index ("\x1b[38;5;Nm") otherwise.
  *
  * kg's token set is coarser than Emacs's faces, so the mapping is:
  *   HL_COMMENT/MLCOMMENT  font-lock-comment-face
- *   HL_KEYWORD1           font-lock-keyword-face        (Purple / Cyan)
+ *   HL_KEYWORD1           font-lock-keyword-face        (Purple / Cyan1)
  *   HL_KEYWORD2           font-lock-type-face           (ForestGreen / PaleGreen)
  *   HL_STRING             font-lock-string-face         (RosyBrown / LightSalmon)
  *   HL_NUMBER             (Emacs has no number face)    — default-ish
- *   HL_MATCH              search match — not an Emacs foreground; keep a
- *                         readable inverse-ish blue
+ *   HL_MATCH              search match — not an Emacs foreground; keep blue
  *
- * The background is picked once and cached:
- *   - $KG_BG=dark (or =light) forces it
- *   - else $COLORFGBG (conventional "fg;bg" where bg >= 8 means dark) decides
+ * Background pick (cached once):
+ *   - $KG_BG=dark|light forces it
+ *   - else $COLORFGBG "fg;bg" with bg >= 8 means dark
  *   - else light
+ *
+ * Truecolor detection (cached once):
+ *   - $COLORTERM contains "truecolor" or "24bit"
+ *   - $TERM contains "truecolor", "24bit", "kitty", "alacritty", "wezterm"
+ *   - else assume no truecolor and use nearest 256-cube fallback
  */
 static int vc_dark_background(void)
 {
@@ -1161,35 +1167,94 @@ static int vc_dark_background(void)
 	return 0;
 }
 
-const char *editor_syntax_to_color(int hl)
+static int vc_truecolor(void)
 {
-	static int checked;
-	static int dark;
+	const char *ct, *term;
 
-	if (!checked) { dark = vc_dark_background(); checked = 1; }
+	ct = getenv("COLORTERM");
+	if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) return 1;
+	term = getenv("TERM");
+	if (term) {
+		if (strstr(term, "truecolor") || strstr(term, "24bit") ||
+		    strstr(term, "kitty") || strstr(term, "alacritty") ||
+		    strstr(term, "wezterm")) return 1;
+	}
+	return 0;
+}
+
+/* Nearest index in the 256-colour 6x6x6 cube (16..231) for an RGB triple.
+ * Cube channel levels are {0,95,135,175,215,255}. */
+static int vc_nearest_cube(int r, int g, int b)
+{
+	static const int lvl[6] = {0, 95, 135, 175, 215, 255};
+	int ri, gi, bi, bestd, best;
+
+	bestd = 1 << 30; best = 0;
+	for (ri = 0; ri < 6; ri++)
+	for (gi = 0; gi < 6; gi++)
+	for (bi = 0; bi < 6; bi++) {
+		int d = (r-lvl[ri])*(r-lvl[ri]) + (g-lvl[gi])*(g-lvl[gi]) + (b-lvl[bi])*(b-lvl[bi]);
+		if (d < bestd) { bestd = d; best = 16 + 36*ri + 6*gi + bi; }
+	}
+	return best;
+}
+
+/* Format the SGR sequence for (r,g,b) into buf and return buf. */
+static const char *vc_format_rgb(char *buf, int size, int r, int g, int b, int tc)
+{
+	if (tc)
+		snprintf(buf, size, "\x1b[38;2;%d;%d;%dm", r, g, b);
+	else
+		snprintf(buf, size, "\x1b[38;5;%dm", vc_nearest_cube(r, g, b));
+	return buf;
+}
+
+/* Stable per-token SGR strings (display.c compares/caches by pointer). */
+static char color_seq[16][24];
+static int color_seq_ready;
+
+static void vc_init_colors(void)
+{
+	int dark, tc;
+	struct { int hl; int r, g, b; } tab[] = {
+		/* light palette — overwritten below if dark */
+		{ HL_COMMENT,   178,  34,  34 },  /* Firebrick    */
+		{ HL_MLCOMMENT, 178,  34,  34 },
+		{ HL_KEYWORD1,  160,  32, 240 },  /* Purple       */
+		{ HL_KEYWORD2,   34, 139,  34 },  /* ForestGreen  */
+		{ HL_STRING,    188, 143, 143 },  /* RosyBrown    */
+	};
+	int i;
+
+	dark = vc_dark_background();
+	tc = vc_truecolor();
 
 	if (dark) {
-		switch (hl) {
-		case HL_COMMENT:
-		case HL_MLCOMMENT: return "\x1b[38;5;208m";  /* chocolate1 (orange)   */
-		case HL_KEYWORD1:  return "\x1b[36m";         /* Cyan (keywords)       */
-		case HL_KEYWORD2:  return "\x1b[38;5;120m";   /* PaleGreen (types)     */
-		case HL_STRING:    return "\x1b[38;5;216m";   /* LightSalmon           */
-		case HL_NUMBER:    return "\x1b[37m";         /* (Emacs: default)      */
-		case HL_MATCH:     return "\x1b[34m";         /* blue (search match)   */
-		default:           return "\x1b[37m";         /* white                 */
-		}
+		tab[0].r=255; tab[0].g=127; tab[0].b=0;    /* chocolate1   */
+		tab[1].r=255; tab[1].g=127; tab[1].b=0;
+		tab[2].r=0;   tab[2].g=255; tab[2].b=255;  /* Cyan1        */
+		tab[3].r=152; tab[3].g=251; tab[3].b=152;  /* PaleGreen    */
+		tab[4].r=255; tab[4].g=160; tab[4].b=122;  /* LightSalmon  */
 	}
-	switch (hl) {
-	case HL_COMMENT:
-	case HL_MLCOMMENT: return "\x1b[38;5;124m";  /* Firebrick (dark red)   */
-	case HL_KEYWORD1:  return "\x1b[38;5;129m";  /* Purple                 */
-	case HL_KEYWORD2:  return "\x1b[38;5;34m";   /* ForestGreen (types)    */
-	case HL_STRING:    return "\x1b[38;5;138m";  /* RosyBrown (mauve)      */
-	case HL_NUMBER:    return "\x1b[37m";        /* (Emacs: default)       */
-	case HL_MATCH:     return "\x1b[34m";        /* blue (search match)    */
-	default:           return "\x1b[37m";        /* white                  */
-	}
+
+	for (i = 0; i < (int)(sizeof tab / sizeof tab[0]); i++)
+		vc_format_rgb(color_seq[tab[i].hl], sizeof color_seq[0],
+		              tab[i].r, tab[i].g, tab[i].b, tc);
+
+	/* Non-Emacs tokens: keep the basic ANSI codes that worked before. */
+	snprintf(color_seq[HL_NUMBER], sizeof color_seq[0], "\x1b[37m");  /* default-ish */
+	snprintf(color_seq[HL_MATCH],  sizeof color_seq[0], "\x1b[34m");  /* blue        */
+	snprintf(color_seq[HL_NORMAL], sizeof color_seq[0], "\x1b[37m");  /* white       */
+
+	color_seq_ready = 1;
+}
+
+const char *editor_syntax_to_color(int hl)
+{
+	if (!color_seq_ready) vc_init_colors();
+	if (hl < 0 || hl >= (int)(sizeof color_seq / sizeof color_seq[0]))
+		return "\x1b[37m";
+	return color_seq[hl];
 }
 
 /* Map a shebang interpreter name to a file extension for syntax lookup.
