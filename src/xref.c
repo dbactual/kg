@@ -470,7 +470,7 @@ static void xref_rehighlight(void)
  * directory containing a project marker (.git, Makefile, package.json,
  * Cargo.toml, .hg, .svn, TAGS).  Writes the absolute path to rootbuf and
  * returns 1, or returns 0 (rootbuf untouched) if no marker is found. */
-static int xref_find_root(char *rootbuf, int rootsize)
+int editor_find_project_root(char *rootbuf, int rootsize)
 {
 	char dir[1024];
 	char *slash;
@@ -538,7 +538,7 @@ void xref_find_definitions(void)
 	if (lang) {
 		char rootbuf[1024];
 		const char *dir = ".";
-		if (xref_find_root(rootbuf, sizeof rootbuf)) {
+		if (editor_find_project_root(rootbuf, sizeof rootbuf)) {
 			dir = rootbuf;
 		} else if (editor.filename) {
 			const char *slash = strrchr(editor.filename, '/');

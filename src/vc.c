@@ -35,7 +35,7 @@ static struct editor_syntax gitlog_syntax = {
 static struct editor_syntax vcdir_syntax = {
 	"VC-dir", NULL, NULL, "", "", "", SHL_VCDIR
 };
-static struct editor_syntax grep_syntax_rec = {
+struct editor_syntax grep_syntax_rec = {
 	"Grep", NULL, NULL, "", "", "", SHL_GREP
 };
 
@@ -45,7 +45,8 @@ static struct editor_syntax grep_syntax_rec = {
 #define VC_SHOW_NAME   "*git-show*"
 #define VC_DIR_NAME    "*vc-dir*"
 #define VC_FILEDIFF_NAME "*vc-diff*"
-#define GREP_NAME      "*grep*"
+
+/* Exposed for project.c's project_grep, which reuses the *grep* buffer. */
 
 /* Forward decl: defined with the Enter handlers below, but vc_dir_select /
  * vc_dir_diff (built earlier) need it. */
@@ -334,9 +335,9 @@ void vc_filediff_close(int fd)
 
 /* The grep command line to run, captured by grep_open() before opening
  * the buffer (buf_open_special's populate callback takes no args). */
-static char grep_cmd[512];
+char grep_cmd[512];
 
-static void grep_populate(void)
+void grep_populate(void)
 {
 	vc_insert_command_output(grep_cmd);
 }

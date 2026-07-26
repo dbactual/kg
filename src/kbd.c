@@ -159,7 +159,7 @@ void editor_process_keypress(int fd)
 		 * region, like a cursor jump. */
 		editor.cx_prefix = 0;
 		editor.rect_prefix = 0;
-		editor.vc_prefix = 0;
+		editor.proj_prefix = 0;
 		editor.mark_highlight = 0;
 		editor.shift_select = 0;
 		return;
@@ -188,18 +188,20 @@ void editor_process_keypress(int fd)
 		return;
 	}
 
-	/* Handle C-x v vc-mode ops (second key after C-x v).  These open
-	 * special read-only buffers; they don't mutate the current buffer,
-	 * so a read-only buffer is fine.  Only C-g cancels. */
-	if (editor.vc_prefix) {
-		editor.vc_prefix = 0;
+	/* Handle C-x p project ops (second key after C-x p).  These open
+	 * special read-only buffers or pickers; they don't mutate the current
+	 * buffer, so a read-only buffer is fine.  Only C-g cancels. */
+	if (editor.proj_prefix) {
+		editor.proj_prefix = 0;
 		switch (c) {
-		case 's':              vc_open_status(); break;
-		case 'd':              vc_open_diff();   break;
-		case 'l':              vc_open_log();    break;
-		case 'v':              vc_open_dir();    break;
+		case 'v':              vc_open_dir();    break;  /* vc-dir */
+		case 's':              vc_open_status(); break;  /* git status */
+		case 'd':              vc_open_diff();   break;  /* git diff */
+		case 'l':              vc_open_log();    break;  /* git log */
+		case 'g':              project_grep(fd); break;  /* project grep */
+		case 'f':              project_find_file(fd); break; /* find file */
 		case CTRL_G:           editor_set_status_message(""); break;
-		default:               editor_set_status_message("C-x v %c is undefined", c); break;
+		default:               editor_set_status_message("C-x p %c is undefined", c); break;
 		}
 		return;
 	}
@@ -291,9 +293,9 @@ void editor_process_keypress(int fd)
 			editor.rect_prefix = 1;
 			editor_set_status_message("C-x r-");
 			break;
-		case 'v':       /* C-x v-: vc-mode prefix */
-			editor.vc_prefix = 1;
-			editor_set_status_message("C-x v-");
+		case 'p':       /* C-x p-: project prefix */
+			editor.proj_prefix = 1;
+			editor_set_status_message("C-x p-");
 			break;
 		case CTRL_G:    /* C-x C-g: Cancel C-x prefix */
 			editor_set_status_message("");

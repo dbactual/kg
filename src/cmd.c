@@ -135,6 +135,8 @@ static void cmd_vc_log(int fd)    { (void)fd; vc_open_log();    }
 static void cmd_vc_dir(int fd)    { (void)fd; vc_open_dir();    }
 static void cmd_grep(int fd)      { grep_open(fd);             }
 static void cmd_xref_find(int fd) { (void)fd; xref_find_definitions(); }
+static void cmd_project_grep(int fd)      { project_grep(fd); }
+static void cmd_project_find_file(int fd) { project_find_file(fd); }
 
 /* Toggle auto-revert on the current buffer.  When on (or when the global
  * setting below is on), a clean buffer whose underlying file has changed on
@@ -256,6 +258,8 @@ static const struct named_cmd cmdtable[] = {
 	{ "global-auto-revert-mode",  cmd_global_auto_revert_mode, CMD_NONE },
 	{ "goto-line",                cmd_goto_line,               CMD_NONE },
 	{ "grep",                     cmd_grep,                    CMD_NONE },
+	{ "project-find-file",        cmd_project_find_file,       CMD_NONE },
+	{ "project-grep",             cmd_project_grep,            CMD_NONE },
 	{ "join-line",                cmd_join_line,               CMD_EDITS_BUFFER },
 	{ "just-one-space",           cmd_just_one_space,          CMD_EDITS_BUFFER },
 	{ "make-backup-files",        cmd_make_backup_files,       CMD_NONE },

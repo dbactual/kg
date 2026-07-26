@@ -296,7 +296,7 @@ struct editor_config {
 	int shift_select;   /* 1 when the active region was started by shift+motion. */
 	int rect_mode;      /* 1 when the region should render as a rectangle. */
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
-	int vc_prefix;      /* 1 after C-x v, waiting for the vc-mode op key. */
+	int proj_prefix;    /* 1 after C-x p, waiting for the project op key. */
 	int desired_visual_col; /* goal column across vertical motion; -1 = unset. */
 	int readonly;       /* If 1, buffer is read-only (editing is blocked). */
 	int last_key;       /* Last key processed, for command repetition logic. */
@@ -465,6 +465,17 @@ void vc_filediff_close(int fd);
 void grep_open(int fd);
 void grep_select(void);
 int  editor_word_at_point(char *out, int outsize);
+void project_grep(int fd);
+void project_find_file(int fd);
+void project_select(void);
+
+/* Find the project root above the current file: the nearest ancestor
+ * directory containing a project marker (.git, Makefile, package.json,
+ * Cargo.toml, .hg, .svn, TAGS).  Writes the path to rootbuf and returns 1,
+ * or returns 0 (rootbuf untouched) if no marker is found.  Shared by xref
+ * and the project commands (C-x p). */
+int editor_find_project_root(char *rootbuf, int rootsize);
+#define GREP_NAME "*grep*"   /* *grep* buffer name, shared by vc.c and project.c */
 void xref_find_definitions(void);
 void xref_select(void);
 void xref_pop_mark_ring(void);
