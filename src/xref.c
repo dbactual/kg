@@ -611,7 +611,11 @@ void xref_find_definitions(void)
 		return;
 	}
 	/* Multiple: show the *xref* buffer.  Carrying the match list through a
-	 * static is safe because populate runs before any further edits. */
+	 * static is safe because populate runs before any further edits.
+	 * Push the current position now so M-, after the user picks a match
+	 * unwinds: pick -> jump (pushes *xref* pos), M-, -> back to *xref*,
+	 * M-, -> back to here (the original M-. site). */
+	xref_push_mark();
 	buf_open_special(XREF_NAME, &xref_syntax, xref_populate,
 	                 "xref — RET to jump, q to close.");
 	xref_rehighlight();
