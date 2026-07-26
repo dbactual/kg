@@ -164,8 +164,8 @@ void editor_process_keypress(int fd)
 		editor.shift_select = 0;
 		return;
 	}
-	if (c == MOUSE_WHEEL_UP)   { editor_mouse_wheel(-3); return; }
-	if (c == MOUSE_WHEEL_DOWN) { editor_mouse_wheel( 3); return; }
+	if (c == MOUSE_WHEEL_UP)   { editor_mouse_wheel(-1); return; }
+	if (c == MOUSE_WHEEL_DOWN) { editor_mouse_wheel( 1); return; }
 
 	/* Handle C-x r rectangle ops (second key after C-x r).  Every op
 	 * here mutates the buffer, so a read-only buffer rejects them
