@@ -119,6 +119,19 @@ void editor_move_cursor(int key)
 	case ARROW_UP:
 		if (editor.cy == 0) {
 			if (editor.rowoff) editor.rowoff--;
+			else if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
+			         editor.numrows > 1) {
+				/* Wrap to the bottom of the buffer list: put the
+				 * last row at the bottom of the viewport when the
+				 * list is taller than the window, else at the top. */
+				if (editor.numrows <= editor.screenrows) {
+					editor.rowoff = 0;
+					editor.cy = editor.numrows - 1;
+				} else {
+					editor.rowoff = editor.numrows - editor.screenrows;
+					editor.cy = editor.screenrows - 1;
+				}
+			}
 		} else {
 			editor.cy -= 1;
 		}
@@ -130,6 +143,11 @@ void editor_move_cursor(int key)
 			} else {
 				editor.cy += 1;
 			}
+		} else if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
+		           editor.numrows > 1) {
+			/* Wrap to the top of the buffer list. */
+			editor.rowoff = 0;
+			editor.cy = 0;
 		}
 		break;
 	}
