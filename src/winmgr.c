@@ -729,13 +729,18 @@ void editor_mouse_click(int col, int row)
 	winrow = row - winlist[win_current].y;       /* 0-based */
 	wincol = col - winlist[win_current].x;       /* 0-based */
 
-	filerow = winlist[win_current].rowoff + winrow;
+	/* Use the LIVE scroll offsets (editor.rowoff/coloff), not the window
+	 * slot's copy: wheel scrolling updates editor.rowoff directly without
+	 * saving to the slot, so winlist[...].rowoff can be stale.  After
+	 * win_focus (if the click switched windows), editor.rowoff is
+	 * restored from that window's slot, so it's correct either way. */
+	filerow = editor.rowoff + winrow;
 	if (filerow < 0) filerow = 0;
 	if (filerow >= editor.numrows) filerow = editor.numrows - 1;
 	if (filerow < 0) { editor_cursor_goto(0, 0); return; }  /* empty buffer */
 
 	r = &editor.row[filerow];
-	vcol = winlist[win_current].coloff + wincol;
+	vcol = editor.coloff + wincol;
 	filecol = editor_chars_col_at_visual(r, vcol);
 	if (filecol > r->size) filecol = r->size;
 
