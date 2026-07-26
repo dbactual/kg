@@ -39,7 +39,7 @@ const char *kg_help_lines[] = {
 	"├─────────────────────────┼─────────────────────────┼─────────────────────────┤",
 	"│ C-SPC      set mark     │ C-x SPC  rect mark mode │ C-x 2/3  split h / v    │",
 	"│ C-x C-x    exch mark    │ C-x r k  kill rect      │ C-x o    other window   │",
-	"│ S-arrow    extend       │ C-x r y  yank rect      │ M-arrow  window by dir  │",
+	"│ S-arrow    extend       │ C-x r y  yank rect      │ M-arr    word/para      │",
 	"│ C-S-arrow  word/para    │ C-x r d  delete rect    │ M-S-arr  resize window  │",
 	"│ S-PgUp/Dn  extend page  │ C-x r c  clear rect     │ C-x +    balance windows│",
 	"│ C-w/S-Del  cut          │                         │ C-x 0/1  del wnd/others │",

@@ -608,17 +608,17 @@ void editor_process_keypress(int fd)
 	case ALT_R:         /* M-r: top/middle/bottom of window cycle */
 		editor_move_to_window_line();
 		break;
-	case ALT_ARROW_LEFT:    /* M-arrow: select window in that direction */
-		win_move_dir(-1, 0);
+	case ALT_ARROW_LEFT:    /* M-left: back one word (like M-b) */
+		while (n--) editor_move_word_backward();
 		break;
-	case ALT_ARROW_RIGHT:
-		win_move_dir(1, 0);
+	case ALT_ARROW_RIGHT:   /* M-right: forward one word (like M-f) */
+		while (n--) editor_move_word_forward();
 		break;
-	case ALT_ARROW_UP:
-		win_move_dir(0, -1);
+	case ALT_ARROW_UP:      /* M-up: back one paragraph (like M-{) */
+		while (n--) editor_move_paragraph_backward();
 		break;
-	case ALT_ARROW_DOWN:
-		win_move_dir(0, 1);
+	case ALT_ARROW_DOWN:    /* M-down: forward one paragraph (like M-}) */
+		while (n--) editor_move_paragraph_forward();
 		break;
 	case ALT_SHIFT_ARROW_LEFT:  /* M-S-arrow: divider travels with arrow */
 		win_resize_dir(-1, 0, n);
