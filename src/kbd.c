@@ -3,8 +3,6 @@
 #include "def.h"
 
 
-// test change
-
 /* Repeat counts big enough to overflow the multiply, or to wedge the
  * editor for minutes, are clamped; nothing sensible repeats more often. */
 #define PREFIX_ARG_MAX 100000

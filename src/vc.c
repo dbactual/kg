@@ -206,13 +206,15 @@ static void vc_open_filediff(const char *path)
  * files grouped by directory, in the layout vcdir_syntax expects:
  *     "     <status-word><pad>path"      (file line, path at col 25)
  *     "<25 spaces><dir>/"               (directory header)            */
-/* *vc-dir* shows `git status --short` verbatim: a stable, parseable list
- * of changed files (no custom summary or grouping).  Enter opens a file
- * line, TAB opens a per-file diff; both parse the path out of the
- * "XY path" porcelain line (see vc_dir_path_at_point). */
+/* *vc-dir* shows `git status --porcelain=v1 -b` verbatim: the branch
+ * header ("## branch...upstream [ahead N]") on the first line, then the
+ * changed files as "XY path".  Enter opens a file line, TAB opens a
+ * per-file diff; both parse the path out of the porcelain line (see
+ * vc_dir_path_at_point).  The branch header is left as a non-file line,
+ * so Enter/Tab on it do nothing. */
 static void vc_dir_populate(void)
 {
-	vc_insert_command_output("git status --short");
+	vc_insert_command_output("git status --porcelain=v1 -b");
 }
 
 void vc_open_dir(void)
@@ -239,6 +241,8 @@ static int vc_dir_path_at_point(char *out, int outsize)
 	s = editor.row[filerow].chars;
 	len = editor.row[filerow].size;
 	if (len < 4) return 0;            /* need "XY " + at least one path char */
+	/* Branch header "## ..." is not a file line. */
+	if (s[0] == '#' && s[1] == '#') return 0;
 
 	p = s + 3;                        /* skip "XY " */
 	plen = len - 3;
