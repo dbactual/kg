@@ -91,6 +91,7 @@ static inline void tty_write(const void *buf, size_t n)
 #define SHL_GITSTATUS        (1<<6) /* git status --porcelain highlighter.  */
 #define SHL_GITLOG           (1<<7) /* git log highlighter (vc-mode).       */
 #define SHL_VCDIR            (1<<8) /* VC-dir summary/file-list highlighter.*/
+#define SHL_GREP             (1<<9) /* *grep* file:line highlighter.        */
 
 /* Key action codes */
 enum KEY_ACTION {
@@ -446,6 +447,8 @@ void vc_log_select(void);
 void vc_dir_select(void);
 void vc_dir_diff(void);
 void vc_filediff_close(int fd);
+void grep_open(int fd);
+void grep_select(void);
 void buf_display_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */

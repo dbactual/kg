@@ -35,6 +35,9 @@ static struct editor_syntax gitlog_syntax = {
 static struct editor_syntax vcdir_syntax = {
 	"VC-dir", NULL, NULL, "", "", "", SHL_VCDIR
 };
+static struct editor_syntax grep_syntax_rec = {
+	"Grep", NULL, NULL, "", "", "", SHL_GREP
+};
 
 #define VC_STATUS_NAME "*git-status*"
 #define VC_DIFF_NAME   "*git-diff*"
@@ -42,6 +45,7 @@ static struct editor_syntax vcdir_syntax = {
 #define VC_SHOW_NAME   "*git-show*"
 #define VC_DIR_NAME    "*vc-dir*"
 #define VC_FILEDIFF_NAME "*vc-diff*"
+#define GREP_NAME      "*grep*"
 
 /* Forward decl: defined with the Enter handlers below, but vc_dir_select /
  * vc_dir_diff (built earlier) need it. */
@@ -323,6 +327,88 @@ void vc_filediff_close(int fd)
 			editor_set_status_message("VC-dir — RET to open file, TAB to diff, q to close.");
 		else
 			editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");
+	}
+}
+
+/* ---- Grep (M-x grep) --------------------------------------------------- */
+
+/* The grep command line to run, captured by grep_open() before opening
+ * the buffer (buf_open_special's populate callback takes no args). */
+static char grep_cmd[512];
+
+static void grep_populate(void)
+{
+	vc_insert_command_output(grep_cmd);
+}
+
+/* Prompt for a search pattern, run `grep -rnH -- <pattern> .` from the
+ * current directory, and show the matches in a read-only *grep* buffer.
+ * Enter on a "file:line:text" line opens that file at that line
+ * (grep_select).  For a custom grep invocation use M-! instead. */
+void grep_open(int fd)
+{
+	char pattern[256];
+	char *p;
+
+	pattern[0] = '\0';
+	if (editor_read_line(fd, "grep pattern: ", pattern, sizeof pattern) < 0 ||
+	    !pattern[0])
+		return;
+
+	/* Strip a leading '--' so the user can't accidentally inject grep
+	 * options through the pattern; everything else is passed verbatim,
+	 * so regex metacharacters work. */
+	p = pattern;
+	while (p[0] == '-' && p[1] == '-') p += 2;
+	if (!p[0]) return;
+
+	snprintf(grep_cmd, sizeof grep_cmd, "grep -rnH -- '%s' .", p);
+	buf_open_special(GREP_NAME, &grep_syntax_rec, grep_populate,
+	                 "grep — RET to open match, q to close.");
+	vc_rehighlight();
+}
+
+/* Parse the "file:line:text" line at point and jump to that file:line.
+ * Validates that the bytes between the first and second colons are all
+ * digits, so grep's own header lines and "Binary file ... matches" are
+ * ignored. */
+void grep_select(void)
+{
+	int filerow = editor.rowoff + editor.cy;
+	const char *s;
+	int len, i, colon1, colon2, linenum;
+	char path[512];
+	int plen;
+
+	if (editor.syntax != &grep_syntax_rec) return;
+	if (filerow < 0 || filerow >= editor.numrows) return;
+	s = editor.row[filerow].chars;
+	len = editor.row[filerow].size;
+	if (len <= 0) return;
+
+	colon1 = -1;
+	for (i = 0; i < len; i++) if (s[i] == ':') { colon1 = i; break; }
+	if (colon1 <= 0) return;
+	colon2 = -1;
+	for (i = colon1 + 1; i < len; i++) if (s[i] == ':') { colon2 = i; break; }
+	if (colon2 < 0) return;
+	linenum = 0;
+	for (i = colon1 + 1; i < colon2; i++) {
+		if (!isdigit((unsigned char)s[i])) return;
+		linenum = linenum * 10 + (s[i] - '0');
+	}
+	if (linenum < 1) return;
+
+	plen = colon1;
+	if (plen >= (int)sizeof path) plen = (int)sizeof path - 1;
+	memcpy(path, s, plen);
+	path[plen] = '\0';
+
+	{
+		int slot = buf_open_path(path, 0);
+		if (slot < 0) return;
+		editor_goto_line_direct(linenum, 1);
+		editor_set_status_message("%s:%d", editor.filename ? editor.filename : "[new]", linenum);
 	}
 }
 

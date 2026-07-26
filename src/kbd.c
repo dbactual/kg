@@ -2,7 +2,6 @@
 
 #include "def.h"
 
-
 /* Repeat counts big enough to overflow the multiply, or to wedge the
  * editor for minutes, are clamped; nothing sensible repeats more often. */
 #define PREFIX_ARG_MAX 100000
@@ -337,6 +336,7 @@ void editor_process_keypress(int fd)
 			if (editor.syntax->flags & SHL_DIFF)      { vc_diff_select();   return; }
 			if (editor.syntax->flags & SHL_GITLOG)    { vc_log_select();    return; }
 			if (editor.syntax->flags & SHL_VCDIR)     { vc_dir_select();    return; }
+			if (editor.syntax->flags & SHL_GREP)      { grep_select();      return; }
 			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
 		}
 		buf_ibuffer_select();

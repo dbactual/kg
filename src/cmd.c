@@ -133,6 +133,7 @@ static void cmd_vc_status(int fd) { (void)fd; vc_open_status(); }
 static void cmd_vc_diff(int fd)   { (void)fd; vc_open_diff();   }
 static void cmd_vc_log(int fd)    { (void)fd; vc_open_log();    }
 static void cmd_vc_dir(int fd)    { (void)fd; vc_open_dir();    }
+static void cmd_grep(int fd)      { grep_open(fd);             }
 
 /* Toggle auto-revert on the current buffer.  When on (or when the global
  * setting below is on), a clean buffer whose underlying file has changed on
@@ -253,6 +254,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "enlarge-window-horizontally", cmd_enlarge_window_h,     CMD_NONE },
 	{ "global-auto-revert-mode",  cmd_global_auto_revert_mode, CMD_NONE },
 	{ "goto-line",                cmd_goto_line,               CMD_NONE },
+	{ "grep",                     cmd_grep,                    CMD_NONE },
 	{ "join-line",                cmd_join_line,               CMD_EDITS_BUFFER },
 	{ "just-one-space",           cmd_just_one_space,          CMD_EDITS_BUFFER },
 	{ "make-backup-files",        cmd_make_backup_files,       CMD_NONE },

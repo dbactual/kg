@@ -32,6 +32,7 @@ const char *kg_help_lines[] = {
 	"│                         │                         │ C-x v d  git diff       │",
 	"│                         │                         │ C-x v l  git log        │",
 	"│                         │                         │ C-x v v  vc-dir         │",
+	"│                         │                         │ M-x grep  grep + jump   │",
 	"│                         │                         │ C-x f    set fill column│",
 	"├─────────────────────────┼─────────────────────────┼─────────────────────────┤",
 	"│ REGION & SELECTION      │ RECTANGLES              │ WINDOWS · SEARCH · MISC │",

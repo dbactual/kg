@@ -864,6 +864,34 @@ static void gitlog_syntax(erow *row)
 	/* leave HL_NORMAL */
 }
 
+/* `grep -nH` highlighter (vc-mode *grep* buffer).  Each match line is
+ * "file:line:text".  Colour the file part cyan and the line number red
+ * (including the two colons), leaving the matched text normal so the
+ * search hit stands out.  Lines that don't match that shape (grep's own
+ * headers, "Binary file ... matches", blank lines) stay normal. */
+static void grep_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	int i, colon1, colon2;
+
+	if (len <= 0) return;
+	/* first colon = end of filename */
+	colon1 = -1;
+	for (i = 0; i < len; i++) if (p[i] == ':') { colon1 = i; break; }
+	if (colon1 <= 0) return;            /* no filename */
+	/* second colon = end of line number; the bytes between must be digits */
+	colon2 = -1;
+	for (i = colon1 + 1; i < len; i++) if (p[i] == ':') { colon2 = i; break; }
+	if (colon2 < 0) return;
+	for (i = colon1 + 1; i < colon2; i++)
+		if (!isdigit((unsigned char)p[i])) return;
+
+	memset(row->hl,           HL_COMMENT, colon1);         /* file  (cyan) */
+	memset(row->hl + colon1,  HL_NUMBER,  colon2 - colon1 + 1); /* :line: (red) */
+	/* text after colon2: HL_NORMAL */
+}
+
 /* Set every byte of row->hl (that corresponds to every character in the line)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
@@ -912,6 +940,11 @@ void editor_update_syntax(erow *row)
 		 * the same way as *git-status*: the XY code tinted by change
 		 * kind, the path left normal. */
 		gitstatus_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GREP) {
+		grep_syntax(row);
 		return;
 	}
 
