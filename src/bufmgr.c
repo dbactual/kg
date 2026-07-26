@@ -1122,8 +1122,35 @@ static void buf_list_populate(void)
  * Press q or C-x k to close. */
 void buf_open_list(void)
 {
+	int prev = buf_current;
+	const char *prevfile =
+		(prev >= 0 && \
+			prev < MAX_BUFFERS && \
+			buflist[prev].active && \
+			buflist[prev].filename)
+		? buflist[prev].filename : NULL;
+
 	buf_open_special(IBUF_NAME, &ibuffer_syntax, buf_list_populate,
 	                 "Buffer list — RET to open, q or C-x k to close.");
+
+	if (prevfile) {
+		int i, target = -1;
+		for (i = 2; i < editor.numrows; i++) {
+			if (editor.row[i].size > IBUF_FILENAME_OFFSET &&
+			    strcmp(editor.row[i].chars + IBUF_FILENAME_OFFSET,
+			           prevfile) == 0) {
+				target = i;
+				break;
+			}
+		}
+		if (target >= 0) {
+			editor.rowoff = target - editor.screenrows / 2;
+			if (editor.rowoff < 0) editor.rowoff = 0;
+			editor.cy = target - editor.rowoff;
+			editor.cx = 0;
+			editor.coloff = 0;
+		}
+	}
 }
 
 /* Populate the *help* buffer rows from the static key-binding table. */
