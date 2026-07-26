@@ -120,7 +120,7 @@ void editor_move_cursor(int key)
 		if (editor.cy == 0) {
 			if (editor.rowoff) editor.rowoff--;
 			else if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
-			         editor.numrows > 1) {
+			         editor.numrows > IBUF_HEADER_ROWS) {
 				/* Wrap to the bottom of the buffer list: put the
 				 * last row at the bottom of the viewport when the
 				 * list is taller than the window, else at the top. */
@@ -144,10 +144,11 @@ void editor_move_cursor(int key)
 				editor.cy += 1;
 			}
 		} else if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
-		           editor.numrows > 1) {
-			/* Wrap to the top of the buffer list. */
+		           editor.numrows > IBUF_HEADER_ROWS) {
+			/* Wrap to the first file row of the buffer list
+			 * (skip the two header rows). */
 			editor.rowoff = 0;
-			editor.cy = 0;
+			editor.cy = IBUF_HEADER_ROWS;
 		}
 		break;
 	}

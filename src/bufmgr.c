@@ -1208,7 +1208,7 @@ void buf_ibuffer_select(void)
 	int i;
 
 	if (editor.syntax != &ibuffer_syntax) return; /* only valid in IBuffer mode */
-	if (filerow < 2 || filerow >= editor.numrows) return; /* skip header rows */
+	if (filerow < IBUF_HEADER_ROWS || filerow >= editor.numrows) return; /* skip header rows */
 	if (editor.row[filerow].size <= IBUF_FILENAME_OFFSET) return;
 
 	filename = editor.row[filerow].chars + IBUF_FILENAME_OFFSET;

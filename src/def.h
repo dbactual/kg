@@ -91,6 +91,7 @@ int tty_query_background(int fd);
 #define SHL_MARKDOWN         (1<<2) /* Use markdown-specific highlighter. */
 #define SHL_MAKEFILE         (1<<3) /* Use makefile-specific highlighter. */
 #define SHL_IBUFFER          (1<<4) /* *Buffer List* select-on-Enter mode. */
+#define IBUF_HEADER_ROWS     2      /* header rows before the first file row */
 #define SHL_DIFF             (1<<5) /* unified-diff highlighter (vc-mode). */
 #define SHL_GITSTATUS        (1<<6) /* git status --porcelain highlighter.  */
 #define SHL_GITLOG           (1<<7) /* git log highlighter (vc-mode).       */
