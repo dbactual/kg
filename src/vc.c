@@ -458,6 +458,25 @@ void vc_dir_diff(void)
 	editor_set_status_message("git diff HEAD -- %s", path);
 }
 
+/* Close the per-file *vc-diff* buffer and return to *vc-dir*.  Bound to
+ * TAB in *vc-diff* (the same key that opened it from *vc-dir*).  Kills
+ * the diff buffer and restores the vc-dir slot if it still exists;
+ * otherwise buf_kill's fallback takes us to the nearest buffer. */
+void vc_filediff_close(int fd)
+{
+	int slot;
+
+	if (editor.syntax != &diff_syntax_rec) return;
+	if (!editor.filename || strcmp(editor.filename, VC_FILEDIFF_NAME) != 0) return;
+
+	slot = buf_find_by_filename(VC_DIR_NAME);
+	buf_kill(fd);
+	if (slot >= 0 && buflist[slot].active) {
+		buf_open_path(VC_DIR_NAME, 1);
+		editor_set_status_message("VC-dir — RET to open file, TAB to diff, q to close.");
+	}
+}
+
 /* ---- Enter handlers ---------------------------------------------------- */
 
 /* Trim leading/trailing whitespace from [s,s+len) into a static buffer.

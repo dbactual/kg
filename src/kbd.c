@@ -3,7 +3,7 @@
 #include "def.h"
 
 
-// test change here
+// test change
 
 /* Repeat counts big enough to overflow the multiply, or to wedge the
  * editor for minutes, are clamped; nothing sensible repeats more often. */
@@ -337,11 +337,13 @@ void editor_process_keypress(int fd)
 		return;
 	}
 
-	/* In the *vc-dir* buffer, TAB opens a per-file diff at point. */
+	/* In the *vc-dir* buffer, TAB opens a per-file diff at point.
+	 * In the per-file *vc-diff* buffer, TAB closes it and returns to
+	 * *vc-dir* (the same key toggles back). */
 	if (editor.readonly && c == TAB) {
-		if (editor.syntax && (editor.syntax->flags & SHL_VCDIR)) {
-			vc_dir_diff();
-			return;
+		if (editor.syntax) {
+			if (editor.syntax->flags & SHL_VCDIR) { vc_dir_diff(); return; }
+			if (editor.syntax->flags & SHL_DIFF)  { vc_filediff_close(fd); return; }
 		}
 	}
 

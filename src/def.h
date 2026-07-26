@@ -445,6 +445,7 @@ void vc_diff_select(void);
 void vc_log_select(void);
 void vc_dir_select(void);
 void vc_dir_diff(void);
+void vc_filediff_close(int fd);
 void buf_display_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */
