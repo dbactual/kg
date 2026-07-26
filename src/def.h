@@ -464,6 +464,7 @@ void vc_dir_diff(void);
 void vc_filediff_close(int fd);
 void grep_open(int fd);
 void grep_select(void);
+int  editor_word_at_point(char *out, int outsize);
 void xref_find_definitions(void);
 void xref_select(void);
 void xref_pop_mark_ring(void);

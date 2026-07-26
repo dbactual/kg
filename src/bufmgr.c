@@ -398,9 +398,14 @@ void editor_prompt_prefill_dir(char *buf, int bufsize)
 int editor_read_line(int fd, const char *prompt, char *buf, int bufsize)
 {
 	int plen = (int)strlen(prompt);
-	int len = 0, pos = 0, c;
+	int len = (int)strlen(buf), pos = len;
+	int c;
 
-	buf[0] = '\0';
+	/* buf may carry a pre-fill (e.g. the word at point for grep); position
+	 * the cursor at the end so the user can append, edit, or just Enter. */
+	if (len >= bufsize) len = bufsize - 1;
+	buf[len] = '\0';
+	pos = len;
 	while (1) {
 		prompt_refresh(prompt, plen, buf, pos);
 		c = editor_read_key(fd);

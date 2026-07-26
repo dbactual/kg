@@ -350,7 +350,10 @@ void grep_open(int fd)
 	char pattern[256];
 	char *p;
 
-	pattern[0] = '\0';
+	/* Pre-fill with the word at point so the common case — grep the
+	 * identifier under the cursor — needs just an Enter. */
+	if (!editor_word_at_point(pattern, sizeof pattern))
+		pattern[0] = '\0';
 	if (editor_read_line(fd, "grep pattern: ", pattern, sizeof pattern) < 0 ||
 	    !pattern[0])
 		return;

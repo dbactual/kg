@@ -98,7 +98,10 @@ void xref_pop_mark_ring(void)
 
 /* Fill out[] with the identifier (alnum + _) under the cursor and return
  * its length, or 0 if point isn't on an identifier character. */
-static int xref_word_at_point(char *out, int outsize)
+/* Fill out[] with the identifier (alnum + _) under the cursor and return
+ * its length, or 0 if point isn't on an identifier character.  Exposed so
+ * grep (and other commands) can pre-fill from the word at point. */
+int editor_word_at_point(char *out, int outsize)
 {
 	int filerow = editor.rowoff + editor.cy;
 	int filecol = editor.coloff + editor.cx;
@@ -519,7 +522,7 @@ void xref_find_definitions(void)
 	if (!editor.syntax) lang = NULL;
 	else lang = editor.syntax->name;
 
-	if (!xref_word_at_point(name, sizeof name)) {
+	if (!editor_word_at_point(name, sizeof name)) {
 		editor_set_status_message("No identifier at point");
 		return;
 	}
