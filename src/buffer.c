@@ -105,8 +105,9 @@ void editor_cursor_goto(int row, int col)
 /* Reveal (row, col) the way incremental search wants it: if the target is
  * already on screen leave the viewport alone, so the eye isn't yanked around
  * on every keystroke; only when it falls outside the window do we recentre on
- * it.  Cursor lands on the target either way.  col is a render column (into
- * row->render), unlike editor_cursor_goto's chars offset. */
+ * it.  Cursor lands on the target either way.  col is a chars byte offset
+ * into row->chars (the caller must convert from render columns when the
+ * match was found in row->render — see render_col_to_chars). */
 void editor_reveal_position_centered(int row, int col)
 {
 	if (row < 0) row = 0;

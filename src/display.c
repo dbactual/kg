@@ -80,6 +80,29 @@ int chars_to_render_col(erow *row, int chars_col)
 	return idx;
 }
 
+/* Inverse of chars_to_render_col(): given an offset into row->render
+ * (the tab-expanded buffer), return the matching byte offset into
+ * row->chars.  A target that falls inside a tab's expansion snaps to
+ * the tab's start byte (the closest representable chars position). */
+int render_col_to_chars(erow *row, int render_col)
+{
+	int j, ridx = 0;
+
+	if (render_col <= 0) return 0;
+	for (j = 0; j < row->size; j++) {
+		if (row->chars[j] == TAB) {
+			int next = ridx + 1;
+			while ((next + 1) % 8 != 0) next++;
+			if (next > render_col) break;  /* target inside this tab */
+			ridx = next;
+		} else {
+			if (ridx + 1 > render_col) break;
+			ridx++;
+		}
+	}
+	return j;
+}
+
 /* Render the text rows of one window into ab.
  * win_y, win_x, win_h, win_w describe the window's position/size.
  * rowoff/coloff/numrows/rows describe the buffer viewport.

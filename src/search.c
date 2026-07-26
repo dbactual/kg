@@ -266,9 +266,20 @@ void editor_find(int fd, int direction)
 				}
 				/* Land point at the far end of the match in the
 				 * search direction: end when going forward, start
-				 * when going back, like Emacs isearch. */
-				editor_reveal_position_centered(match_row,
-				    match_col + (direction > 0 ? match_len : 0));
+				 * when going back, like Emacs isearch.  The match
+				 * was found in row->render (tab-expanded), so
+				 * convert the render offset to a chars byte
+				 * offset before positioning — otherwise tabs
+				 * inflate the column and point lands past the
+				 * match end. */
+				{
+					int render_col = match_col +
+						(direction > 0 ? match_len : 0);
+					int chars_col = render_col_to_chars(
+						&editor.row[match_row], render_col);
+					editor_reveal_position_centered(match_row,
+						chars_col);
+				}
 			}
 		}
 	}

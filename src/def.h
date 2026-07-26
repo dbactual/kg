@@ -499,6 +499,7 @@ void editor_snap_cx_to_row(void);
 int  editor_visual_col(erow *row, int chars_col);
 int  editor_chars_col_at_visual(erow *row, int target_vcol);
 int  chars_to_render_col(erow *row, int chars_col);
+int  render_col_to_chars(erow *row, int render_col);
 
 /* buffer.c */
 void editor_update_row(erow *row);
