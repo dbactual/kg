@@ -362,34 +362,9 @@ matched:
 
 /* ---- search ---------------------------------------------------------- *
  *
- * Scan all open buffers for definition lines.  We don't read files from
- * disk — only buffers the user has opened — so M-. finds definitions that
- * are already loaded.  (Scanning the disk file would be a natural extension;
- * kept out of the first cut for simplicity.) */
-
-static void xref_scan_buffer(int bufidx, const char *name, const char *lang)
-{
-	struct editor_buffer *b = &buflist[bufidx];
-	int i;
-
-	if (!b->active || !b->row) return;
-	for (i = 0; i < b->numrows && xref_nmatches < XREF_MAX_MATCHES; i++) {
-		if (xref_line_is_def(b->row[i].chars, b->row[i].size, name, lang)) {
-			snprintf(xref_matches[xref_nmatches].file,
-			         sizeof xref_matches[0].file, "%s",
-			         b->filename ? b->filename : "[new]");
-			xref_matches[xref_nmatches].line = i + 1;
-			{
-				int n = b->row[i].size, t = 0, s = 0;
-				while (s < n && isspace((unsigned char)b->row[i].chars[s])) s++;
-				while (t < (int)sizeof(xref_matches[0].text) - 1 && s + t < n)
-					xref_matches[xref_nmatches].text[t] = b->row[i].chars[s+t], t++;
-				xref_matches[xref_nmatches].text[t] = '\0';
-			}
-			xref_nmatches++;
-		}
-	}
-}
+ * Scan files on disk for definition lines.  Open buffers are not scanned
+ * — M-. reflects the committed tree, so the result list isn't polluted by
+ * in-progress edits. */
 
 /* Does `path` end with one of the current language's extension patterns?
  * Delegates to syntax.c's matcher so xref stays in sync with HLDB. */
@@ -540,7 +515,6 @@ void xref_find_definitions(void)
 {
 	char name[128];
 	const char *lang;
-	int i;
 
 	if (!editor.syntax) lang = NULL;
 	else lang = editor.syntax->name;
@@ -551,16 +525,13 @@ void xref_find_definitions(void)
 	}
 
 	xref_nmatches = 0;
-	/* First scan open buffers (fast, and the current file is here). */
-	for (i = 0; i < MAX_BUFFERS && xref_nmatches < XREF_MAX_MATCHES; i++)
-		xref_scan_buffer(i, name, lang);
-
-	/* Then walk files on disk so a definition in an unopened file (the
-	 * common case when M-. is invoked from a call site) is found.  Walk
-	 * from the project root (detected by walking up for .git/Makefile/
-	 * package.json/Cargo.toml/.hg/.svn/TAGS) so M-. from src/foo.c finds
-	 * defs in any sibling dir; fall back to the current file's directory,
-	 * then ".", if no project marker is found. */
+	/* Walk files on disk from the project root (detected by walking up
+	 * for .git/Makefile/package.json/Cargo.toml/.hg/.svn/TAGS) so M-.
+	 * from src/foo.c finds defs in any sibling dir; fall back to the
+	 * current file's directory, then ".", if no marker is found.  Only
+	 * files on disk are scanned — open buffers are not, so M-. always
+	 * reflects the committed tree and the result list isn't polluted by
+	 * in-progress edits. */
 	if (lang) {
 		char rootbuf[1024];
 		const char *dir = ".";
@@ -578,24 +549,6 @@ void xref_find_definitions(void)
 		}
 		xref_file_count = 0;
 		xref_walk_dir(dir, name, lang);
-		/* dedupe: a definition in both an open buffer and on disk shows
-		 * twice; drop exact file+line duplicates. */
-		{
-			int a, b, w = 0;
-			for (a = 0; a < xref_nmatches; a++) {
-				int dup = 0;
-				for (b = 0; b < w; b++) {
-					if (xref_matches[b].line == xref_matches[a].line &&
-					    strcmp(xref_matches[b].file, xref_matches[a].file) == 0)
-						{ dup = 1; break; }
-				}
-				if (!dup) {
-					if (w != a) xref_matches[w] = xref_matches[a];
-					w++;
-				}
-			}
-			xref_nmatches = w;
-		}
 	}
 
 	if (xref_nmatches == 0) {
