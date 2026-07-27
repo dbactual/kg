@@ -335,6 +335,32 @@ void buf_display_name(int idx, char *out, size_t outsize)
 	snprintf(out, outsize, "%.*s/%s", parent_len, parent_start, base);
 }
 
+/* Full path of buffer idx's file, with $HOME abbreviated to ~, written to
+ * out.  Special buffers (no filename or a *...* name) show their name as-is. */
+void buf_display_full_name(int idx, char *out, size_t outsize)
+{
+	struct editor_buffer *b = &buflist[idx];
+	const char *path = b->filename;
+	const char *home;
+	size_t hl;
+
+	if (!path) {
+		snprintf(out, outsize, "[new]");
+		return;
+	}
+	if (path[0] == '*') {
+		snprintf(out, outsize, "%s", path);
+		return;
+	}
+	home = getenv("HOME");
+	if (home && home[0] && (hl = strlen(home)) > 0 &&
+	    strncmp(path, home, hl) == 0 && path[hl] == '/') {
+		snprintf(out, outsize, "~%s", path + hl);
+		return;
+	}
+	snprintf(out, outsize, "%s", path);
+}
+
 /* Reset the echo-area cursor state and clear the status line.  Centralises
  * the "leaving the minibuffer" handshake so every exit path agrees. */
 static int prompt_done(int rc)

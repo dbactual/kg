@@ -339,7 +339,7 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	int bufidx, int is_active, int cur_row, int cur_col, int total_rows, int rowoff, int win_h)
 {
 	char status[512];
-	char bname[128];
+	char bname[300];
 	int len;
 	struct editor_buffer *b = &buflist[bufidx];
 	const char *modename = b->syntax ? b->syntax->name : "Fundamental";
@@ -350,11 +350,10 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	const char *flags;
 	char pos[8];
 
-	/* Show only the basename in the mode line (Emacs-style); the directory
-	 * part is still available via C-x C-b.  buf_display_name() also
-	 * prepends the parent directory when another open buffer shares the
-	 * basename, so foo and dir/foo can be told apart. */
-	buf_display_name(bufidx, bname, sizeof(bname));
+	/* Show the full path (with ~ for $HOME) in the mode line so the
+	 * user always knows which file they're in.  Special *...* buffers
+	 * show their name as-is. */
+	buf_display_full_name(bufidx, bname, sizeof(bname));
 	if (is_current ? editor.disk_changed : b->disk_changed)
 		changed = " (changed)";
 

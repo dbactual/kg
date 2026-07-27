@@ -483,6 +483,7 @@ void xref_find_definitions(void);
 void xref_select(void);
 void xref_pop_mark_ring(void);
 void buf_display_name(int idx, char *out, size_t outsize);
+void buf_display_full_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */
 void win_init(void);
