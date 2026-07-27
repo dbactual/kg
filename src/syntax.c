@@ -70,6 +70,7 @@ char *SHELL_HL_extensions[] = {
 	".sh", ".bash", ".zsh", ".ksh", ".csh", ".tcsh",
 	".profile", ".bashrc", ".bash_profile", ".bash_login",
 	".zshrc", ".zshenv", ".zlogin", ".zprofile",
+	".env", ".env.local", ".env.production", ".env.development",
 	NULL};
 
 char *SHELL_HL_keywords[] = {
