@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /* ---- project grep ---------------------------------------------------- *
  *
@@ -34,7 +35,61 @@ extern char grep_cmd[];            /* defined in vc.c, read by grep_populate */
 extern void grep_populate(void);   /* defined in vc.c */
 extern struct editor_syntax grep_syntax_rec;  /* defined in vc.c */
 
-/* Run `grep -rnH -- <pattern> <root>` and show matches in *grep*. */
+/* True for files that should be skipped when listing/scanning a project:
+ * editor backups (foo~), swap files (.foo.swp, .#foo), VCS conflict
+ * leftovers, core dumps, etc.  Hidden files (leading '.') are already
+ * skipped by the directory walks; this catches the non-hidden cruft. */
+int editor_is_cruft_file(const char *name)
+{
+	const char *base = strrchr(name, '/');
+	size_t bl;
+	static const char *suff[] = { ".orig", ".rej", ".bak", ".merge", NULL };
+	int i;
+
+	base = base ? base + 1 : name;
+	bl = strlen(base);
+
+	if (bl > 0 && base[bl-1] == '~') return 1;        /* foo~            */
+	if (bl >= 2 && base[0] == '.' && base[1] == '#') return 1;  /* .#foo  */
+	if (!strcmp(base, "core")) return 1;
+	if (bl >= 4 && base[bl-4] == '.' && base[bl-3] == 's' &&
+	    base[bl-2] == 'w' && (base[bl-1] == 'p' || base[bl-1] == 'o'))
+		return 1;                                      /* .swp / .swo     */
+	for (i = 0; suff[i]; i++) {
+		size_t sl = strlen(suff[i]);
+		if (bl >= sl && !strcmp(base + bl - sl, suff[i])) return 1;
+	}
+	return 0;
+}
+
+/* Build the search command in `out`, preferring ripgrep (faster, respects
+ * .gitignore) and falling back to grep.  Both produce "file:line:text"
+ * output that the *grep* buffer parses.  Backup/swap files are excluded
+ * either way.  Returns the command string. */
+const char *editor_build_grep_cmd(char *out, int outsize, const char *pattern,
+                                  const char *path)
+{
+	if (access("/usr/bin/rg", X_OK) == 0 ||
+	    access("/usr/local/bin/rg", X_OK) == 0 ||
+	    access("/opt/homebrew/bin/rg", X_OK) == 0) {
+		snprintf(out, outsize,
+		         "rg -nH --hidden --glob '!*~' --glob '!.#*' --glob '!*.swp' "
+		         "--glob '!*.swo' --glob '!*.orig' --glob '!*.rej' --glob '!*.bak' "
+		         "-- '%s' %s",
+		         pattern, path);
+	} else {
+		snprintf(out, outsize,
+		         "grep -rnH --exclude='*~' --exclude='.#*' --exclude='*.swp' "
+		         "--exclude='*.swo' --exclude='*.orig' --exclude='*.rej' "
+		         "--exclude='*.bak' -- '%s' %s",
+		         pattern, path);
+	}
+	return out;
+}
+
+/* Run `grep -rnH -- <pattern> <root>` and show matches in *grep*.  Uses
+ * ripgrep when available (faster, and it respects .gitignore); falls back
+ * to grep. */
 void project_grep(int fd)
 {
 	char pattern[256];
@@ -55,7 +110,10 @@ void project_grep(int fd)
 	if (!editor_find_project_root(root, sizeof root))
 		snprintf(root, sizeof root, ".");
 
-	snprintf(grep_cmd, 512, "grep -rnH -- '%s' %s", p, root);
+	if (!editor_find_project_root(root, sizeof root))
+		snprintf(root, sizeof root, ".");
+
+	editor_build_grep_cmd(grep_cmd, 512, p, root);
 	buf_open_special(GREP_NAME, &grep_syntax_rec, grep_populate,
 	                 "project grep — RET to open match, q to close.");
 	/* re-highlight rows inserted while syntax was NULL */
@@ -99,6 +157,7 @@ static void proj_walk(const char *dir)
 				continue;
 			proj_walk(path);
 		} else if (S_ISREG(st.st_mode)) {
+			if (editor_is_cruft_file(e->d_name)) continue;
 			/* Store the path relative to the project root so the picker
 			 * shows "src/kbd.c" rather than an absolute path. */
 			snprintf(proj_files[proj_nfiles], sizeof proj_files[0],

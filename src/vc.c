@@ -366,7 +366,7 @@ void grep_open(int fd)
 	while (p[0] == '-' && p[1] == '-') p += 2;
 	if (!p[0]) return;
 
-	snprintf(grep_cmd, sizeof grep_cmd, "grep -rnH -- '%s' .", p);
+	editor_build_grep_cmd(grep_cmd, sizeof grep_cmd, p, ".");
 	buf_open_special(GREP_NAME, &grep_syntax_rec, grep_populate,
 	                 "grep — RET to open match, q to close.");
 	vc_rehighlight();

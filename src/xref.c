@@ -436,6 +436,7 @@ static void xref_walk_dir(const char *dir, const char *name, const char *lang)
 				continue;
 			xref_walk_dir(path, name, lang);
 		} else if (S_ISREG(st.st_mode)) {
+			if (editor_is_cruft_file(e->d_name)) continue;
 			xref_file_count++;
 			if (xref_path_matches_lang(path, lang))
 				xref_scan_file(path, name, lang);

@@ -475,6 +475,9 @@ void project_select(void);
  * or returns 0 (rootbuf untouched) if no marker is found.  Shared by xref
  * and the project commands (C-x p). */
 int editor_find_project_root(char *rootbuf, int rootsize);
+int editor_is_cruft_file(const char *name);   /* backup/swap/conflict files to skip */
+const char *editor_build_grep_cmd(char *out, int outsize, const char *pattern,
+                                  const char *path);
 #define GREP_NAME "*grep*"   /* *grep* buffer name, shared by vc.c and project.c */
 void xref_find_definitions(void);
 void xref_select(void);
