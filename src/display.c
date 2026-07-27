@@ -16,8 +16,8 @@ static const char *kg_logo[] = {
 	"╭───╯  ╰───╮ ",
 	"│          │ ",
 	"│  │       │ ",
-	"│  │╱ ╭─╮  │ Your fingers know this",
-	"│  │╲ ╰─┤  │   Just enough Emacs",
+	"│  │╱ ╭─╮  │ ",
+	"│  │╲ ╰─┤  │ ",
 	"│     ╰─╯  │ ",
 	"╰──────────╯ ",
 };
