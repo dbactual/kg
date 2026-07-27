@@ -288,8 +288,10 @@ static void region_kill_or_delete(int save)
 		return;
 	}
 
-	if (save)
+	if (save) {
 		kill_ring_set(text, len);
+		copy_to_clipboard(text, len);
+	}
 
 	if (editor.mark_row < cur_row || (editor.mark_row == cur_row && editor.mark_col < cur_col)) {
 		start_row = editor.mark_row;
@@ -342,6 +344,7 @@ void editor_copy_region(void)
 	}
 
 	kill_ring_set(text, len);
+	copy_to_clipboard(text, len);
 	editor.mark_highlight = 0;
 	editor.rect_mode = 0;
 	editor.shift_select = 0;
