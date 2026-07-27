@@ -160,6 +160,7 @@ void editor_process_keypress(int fd)
 		editor.cx_prefix = 0;
 		editor.rect_prefix = 0;
 		editor.proj_prefix = 0;
+		editor.cc_prefix = 0;
 		editor.mark_highlight = 0;
 		editor.shift_select = 0;
 		return;
@@ -202,6 +203,17 @@ void editor_process_keypress(int fd)
 		case 'f':              project_find_file(fd); break; /* find file */
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-x p %c is undefined", c); break;
+		}
+		return;
+	}
+
+	/* Handle C-c prefix commands (second key after C-c). */
+	if (editor.cc_prefix) {
+		editor.cc_prefix = 0;
+		switch (c) {
+		case 'g':              editor_goto_line(fd); break;  /* C-c g: goto line */
+		case CTRL_G:           editor_set_status_message(""); break;
+		default:               editor_set_status_message("C-c %c is undefined", c); break;
 		}
 		return;
 	}
@@ -524,6 +536,10 @@ void editor_process_keypress(int fd)
 	case CTRL_X:        /* C-x prefix */
 		editor.cx_prefix = 1;
 		editor_set_status_message("C-x-");
+		return;
+	case CTRL_C:        /* C-c prefix */
+		editor.cc_prefix = 1;
+		editor_set_status_message("C-c-");
 		return;
 	case CTRL_Y:        /* Yank (paste) */
 	case SHIFT_INSERT:  /* CUA paste */
