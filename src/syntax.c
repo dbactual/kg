@@ -144,6 +144,26 @@ char *RUST_HL_keywords[] = {
 	"Copy|", "Send|", "Sync|", "Drop|", "Display|", "Debug|", "Default|", "PartialEq|",
 	"Eq|", "PartialOrd|", "Ord|", "Hash|", "Iterator|", "IntoIterator|", NULL};
 
+/* Go */
+char *GO_HL_extensions[] = {".go", NULL};
+char *GO_HL_keywords[] = {
+	/* Go Keywords */
+	"break", "case", "chan", "const", "continue", "default", "defer", "else",
+	"fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
+	"map", "package", "range", "return", "select", "struct", "switch", "type",
+	"var",
+
+	/* Go built-in types & functions (trailing | = HL_KEYWORD2) */
+	"bool|", "byte|", "complex64|", "complex128|", "float32|", "float64|",
+	"int|", "int8|", "int16|", "int32|", "int64|", "rune|", "string|",
+	"uint|", "uint8|", "uint16|", "uint32|", "uint64|", "uintptr|",
+	"error|", "any|",
+	"append|", "cap|", "close|", "complex|", "copy|", "delete|", "imag|",
+	"len|", "make|", "new|", "panic|", "print|", "println|", "real|",
+	"recover|", "min|", "max|", "clear|",
+	"true", "false", "nil", "iota",
+	NULL};
+
 /* Java */
 char *JAVA_HL_extensions[] = {".java", ".class", NULL};
 char *JAVA_HL_keywords[] = {
@@ -536,6 +556,7 @@ struct editor_syntax HLDB[] = {
 	{ "Shell",      SHELL_HL_extensions,   SHELL_HL_keywords,   "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "JavaScript", JS_HL_extensions,      JS_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Rust",       RUST_HL_extensions,    RUST_HL_keywords,    "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
+	{ "Go",         GO_HL_extensions,      GO_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Java",       JAVA_HL_extensions,    JAVA_HL_keywords,    "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "TypeScript", TS_HL_extensions,      TS_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "C#",         CSHARP_HL_extensions,  CSHARP_HL_keywords,  "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },

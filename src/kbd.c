@@ -31,7 +31,7 @@ static int handle_universal_arg(int c)
 			return 1;
 		}
 		return 0;
-	}
+	}	
 
 	if (c == CTRL_U) {
 		editor.prefix_arg *= 4;
