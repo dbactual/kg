@@ -834,6 +834,32 @@ static void gitstatus_syntax(erow *row)
 
 	if (len <= 0) return;
 	if (!strncmp(p, "## ", 3)) { memset(row->hl, HL_COMMENT, len); return; }
+	/* Graph-log lines (from the recent-log section vc-dir appends):
+	 *   "* <hash> <date> <subject> <author> (refs)"
+	 * Tint the leading graph column + the hash cyan, and any trailing
+	 * "(refs)" magenta.  Distinguished from porcelain "XY path" lines
+	 * by starting with a graph char (* | / \) rather than a status code. */
+	if (p[0] == '*' || p[0] == '|' || p[0] == '/' || p[0] == '\\' ||
+	    (p[0] == ' ' && len > 1 && (p[1] == '*' || p[1] == '|' ||
+	                                p[1] == '/' || p[1] == '\\'))) {
+		int g = (p[0] == ' ') ? 1 : 0;   /* leading-space graph indent */
+		int h0 = g + 2;                  /* hash starts after "* " */
+		/* tint the graph column(s) + "* " prefix + hash */
+		if (h0 < len) {
+			int hlen = 0;
+			while (h0 + hlen < len && p[h0+hlen] != ' ') hlen++;
+			memset(row->hl, HL_COMMENT, h0 + hlen);  /* cyan */
+			/* trailing "(refs)" in magenta */
+			{
+				int i;
+				for (i = len - 1; i >= 0; i--)
+					if (p[i] == '(') break;
+				if (i >= 0 && i < len && p[len-1] == ')')
+					memset(row->hl + i, HL_STRING, len - i);
+			}
+		}
+		return;
+	}
 	if (len < 2) return;
 
 	x = p[0]; y = p[1];

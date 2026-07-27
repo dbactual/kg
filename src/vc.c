@@ -216,15 +216,27 @@ static void vc_open_filediff(const char *path)
  * files grouped by directory, in the layout vcdir_syntax expects:
  *     "     <status-word><pad>path"      (file line, path at col 25)
  *     "<25 spaces><dir>/"               (directory header)            */
-/* *vc-dir* shows `git status --porcelain=v1 -b` verbatim: the branch
- * header ("## branch...upstream [ahead N]") on the first line, then the
- * changed files as "XY path".  Enter opens a file line, TAB opens a
- * per-file diff; both parse the path out of the porcelain line (see
- * vc_dir_path_at_point).  The branch header is left as a non-file line,
- * so Enter/Tab on it do nothing. */
+/* *vc-dir* shows `git status --porcelain=v1 -b` (the branch header plus
+ * changed files), then a blank separator and the recent commit log as a
+ * one-line-per-commit graph so you get the overall project state in one
+ * buffer.  Enter on a status file line opens it; Tab opens a per-file
+ * diff.  The branch header ("## ...") and the log lines are non-file
+ * lines, so Enter/Tab on them do nothing.
+ *
+ * The log uses a compact format (hash, short date, subject, author, refs)
+ * without ANSI colour directives — kg's display layer doesn't interpret
+ * ANSI escapes, and the gitstatus highlighter tints the hash/refs fields
+ * instead. */
 static void vc_dir_populate(void)
 {
 	vc_insert_command_output("git status --porcelain=v1 -b");
+	editor_insert_row(editor.numrows, "", 0);  /* blank separator */
+	vc_insert_command_output(
+		"git log --graph --date=short --abbrev-commit --boundary "
+		"--format=format:'%h %ad %<(72,trunc)%s <%an> %d' "
+		"HEAD~16..HEAD 2>/dev/null || "
+		"git log --graph --date=short --abbrev-commit --boundary "
+		"--format=format:'%h %ad %<(72,trunc)%s <%an> %d' HEAD");
 }
 
 void vc_open_dir(void)
