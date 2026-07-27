@@ -800,8 +800,10 @@ void editor_comment_dwim(void)
 void editor_reflow_paragraph(void)
 {
 	int filerow = editor.rowoff + editor.cy;
+	int filecol = editor.coloff + editor.cx;
 	int para_start, para_end, nrows, total_chars, i;
 	int fill_col, indent_len;
+	int ns_before_cursor;   /* non-whitespace chars before point in the para */
 	erow *row;
 	char *words, *indent, *orig_text;
 	int words_len, orig_len;
@@ -830,6 +832,24 @@ void editor_reflow_paragraph(void)
 	total_chars = 0;
 	for (i = para_start; i <= para_end; i++)
 		total_chars += editor.row[i].size;
+
+	/* Count non-whitespace chars before point in the paragraph, so we can
+	 * restore the cursor to the same spot in the reflowed text.  Reflow
+	 * preserves the sequence of non-whitespace characters (only whitespace
+	 * changes), so counting ns-chars is a stable anchor.  Clamp filecol to
+	 * the row's size (point can sit at EOL). */
+	ns_before_cursor = 0;
+	{
+		int r, c, limit;
+		for (r = para_start; r <= filerow; r++) {
+			limit = (r == filerow)
+				? (filecol < editor.row[r].size ? filecol : editor.row[r].size)
+				: editor.row[r].size;
+			for (c = 0; c < limit; c++)
+				if (!isspace((unsigned char)editor.row[r].chars[c]))
+					ns_before_cursor++;
+		}
+	}
 
 	fill_col = (editor.fill_column < editor.screencols - 1) ? editor.fill_column : editor.screencols - 1;
 
@@ -964,21 +984,57 @@ void editor_reflow_paragraph(void)
 	undo_push(UNDO_REFLOW_PARA, para_start, new_count, 0, orig_text, orig_len);
 
 	free(orig_text);
+
+	/* Restore point to the same spot in the reflowed text: walk the new
+	 * lines counting non-whitespace chars until we reach ns_before_cursor,
+	 * landing on the line/col where that count falls.  If the count lands
+	 * exactly at a line boundary, stay at the start of the next line (the
+	 * natural "between words" position). */
+	{
+		int r, c, seen = 0, landed_row = para_start, landed_col = indent_len;
+		for (r = 0; r < new_count; r++) {
+			int rowlen = new_lens[r];
+			const char *s = new_lines[r];
+			for (c = 0; c < rowlen; c++) {
+				if (!isspace((unsigned char)s[c])) {
+					if (seen == ns_before_cursor) {
+						landed_row = para_start + r;
+						landed_col = c;
+						goto landed;
+					}
+					seen++;
+				}
+			}
+			/* End of this line: if the cursor was at the end of the
+			 * original line (ns count matched here), land at EOL. */
+			if (seen == ns_before_cursor) {
+				landed_row = para_start + r;
+				landed_col = rowlen;
+				goto landed;
+			}
+		}
+		/* Fallback: end of paragraph. */
+		landed_row = para_start + new_count - 1;
+		landed_col = new_lens[new_count - 1];
+landed:
+		/* Position the viewport so landed_row is visible, then set cx/cy. */
+		if (landed_row < editor.rowoff) {
+			editor.rowoff = landed_row;
+			editor.cy = 0;
+		} else if (landed_row >= editor.rowoff + editor.screenrows) {
+			editor.rowoff = landed_row - editor.screenrows + 1;
+			editor.cy = editor.screenrows - 1;
+		} else {
+			editor.cy = landed_row - editor.rowoff;
+		}
+		editor.cx = landed_col;
+		editor.coloff = 0;
+	}
+
 	for (i = 0; i < new_count; i++) free(new_lines[i]);
 	free(new_lines);
 	free(new_lens);
 
-	if (para_start < editor.rowoff) {
-		editor.rowoff = para_start;
-		editor.cy = 0;
-	} else if (para_start >= editor.rowoff + editor.screenrows) {
-		editor.rowoff = para_start - editor.screenrows + 1;
-		editor.cy = editor.screenrows - 1;
-	} else {
-		editor.cy = para_start - editor.rowoff;
-	}
-	editor.cx     = indent_len;
-	editor.coloff = 0;
 	editor_set_status_message("Paragraph reflowed");
 }
 
