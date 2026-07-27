@@ -328,7 +328,9 @@ void editor_process_keypress(int fd)
 	 * generic nearest-buffer fallback. */
 	if (c == 'q' && is_special_buffer(editor.filename) && buf_count > 1) {
 		if (editor.syntax && (editor.syntax->flags & SHL_DIFF) &&
-		    editor.filename && strcmp(editor.filename, "*vc-diff*") == 0) {
+		    editor.filename &&
+		    (strcmp(editor.filename, "*vc-diff*") == 0 ||
+		     strcmp(editor.filename, "*git-show*") == 0)) {
 			vc_filediff_close(fd);
 			return;
 		}
@@ -369,8 +371,9 @@ void editor_process_keypress(int fd)
 	 * *vc-dir* (the same key toggles back). */
 	if (editor.readonly && c == TAB) {
 		if (editor.syntax) {
-			if (editor.syntax->flags & SHL_VCDIR) { vc_dir_diff(); return; }
+			if (editor.syntax->flags & SHL_VCDIR)  { vc_dir_diff(); return; }
 			if (editor.syntax->flags & SHL_DIFF)  { vc_filediff_close(fd); return; }
+			if (editor.syntax->flags & SHL_GITLOG) { vc_log_select(); return; }
 		}
 	}
 
