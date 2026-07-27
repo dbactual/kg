@@ -383,6 +383,9 @@ void editor_process_keypress(int fd)
 	if (editor.last_key != ALT_R)
 		editor.window_line_state = 0;
 	editor.last_key = c;
+	/* Reset the dabbrev cycle on any non-TAB key so a fresh press starts
+	 * a new expansion (Emacs behaviour). */
+	if (c != TAB) dabbrev_reset();
 
 	/* Shift+motion: drop the mark at the current position the first
 	 * time the user starts a shift-selected region, so subsequent
@@ -404,6 +407,26 @@ void editor_process_keypress(int fd)
 		break;
 	case ENTER:         /* Enter */
 		while (n--) editor_insert_newline();
+		break;
+	case TAB:           /* TAB: region indent, dabbrev, or literal tab */
+		if (editor_readonly_blocked())
+			break;
+		if (editor.mark_set && editor.mark_highlight) {
+			/* Active region: indent rigidly by 4, keeping the region. */
+			while (n--) editor_indent_rigidly(4);
+		} else if (editor.echo_cursor_col > 0) {
+			/* In a minibuffer prompt: let the prompt handle completion
+			 * (path prompts already do; others ignore TAB). */
+			editor_insert_char_auto_complete(TAB);
+		} else {
+			/* Otherwise: dabbrev-expand (consumes TAB if there's a word
+			 * prefix before point); else insert a literal tab. */
+			int expanded = 0;
+			while (n-- && !expanded)
+				expanded = dabbrev_expand();
+			if (!expanded)
+				editor_insert_char_auto_complete(TAB);
+		}
 		break;
 	case CTRL_A:        /* Beginning of line */
 		editor_move_cursor(HOME_KEY);
@@ -751,8 +774,10 @@ void editor_process_keypress(int fd)
 		/* Filter out control characters and non-printable characters.
 		 * Only allow printable ASCII (32-126) and TAB.  (ENTER is handled
 		 * as its own case above and would never reach here.)  Repeats N
-		 * times when a C-u prefix preceded the key. */
-		if (c == TAB || (c >= 32 && c < 127))
+		 * times when a C-u prefix preceded the key.
+		 *
+		 * TAB has its own case below; other keys fall through to here. */
+		if (c >= 32 && c < 127)
 			while (n--) editor_insert_char_auto_complete(c);
 		/* Silently ignore all other control/non-printable characters */
 		break;
