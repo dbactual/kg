@@ -106,7 +106,8 @@ Each entry lists the key bindings or commands affected.
 - Pure Emacs-style keybindings
 - Syntax highlighting for many programming languages, including
   hex/binary/octal integer literals
-- Multiple buffers with shared kill ring
+- Multiple buffers with a shared, multi-entry kill ring (M-y
+  yank-pop cycles through prior kills after C-y, like Emacs)
 - Split-window support
 - Visual mark mode: the region renders in reverse video as you move
 - Shift-select and the CUA clipboard trio (Shift-Delete / Ctrl-Insert

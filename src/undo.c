@@ -307,6 +307,23 @@ void editor_undo(void)
 		}
 		break;
 
+	case UNDO_YANK_POP:
+		/* Reverse: delete the new text (op->c chars forward), then
+		 * re-insert the old text (op->text, op->len).  Single undo
+		 * step restores the previous yank. */
+		if (op->row < editor.numrows) {
+			if (op->c > 0) {
+				int i;
+				suppress_undo = 1;
+				for (i = 0; i < op->c; i++)
+					editor_del_forward_char();
+				suppress_undo = 0;
+			}
+			if (op->text && op->len > 0)
+				editor_insert_text_raw(op->text, op->len);
+		}
+		break;
+
 	case UNDO_RECT_OVERWRITE: {
 		/* op->row = first row affected
 		 * op->c   = numrows before the operation

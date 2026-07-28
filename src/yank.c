@@ -1,66 +1,123 @@
-/* yank.c - Kill ring (yank buffer) for copy/paste operations */
+/* yank.c - Kill ring for copy/paste operations.
+ *
+ * A real ring with up to KILL_RING_MAX entries, newest first.
+ * killring.text / killring.len always mirror the newest entry so
+ * existing code that reads them directly keeps working. */
 
 #include "def.h"
 
 /* Global kill ring */
-struct kill_ring killring = {NULL, 0};
+struct kill_ring killring = {NULL, 0, NULL, NULL, 0};
+
+/* Sync the flat text/len fields with ring entry 0. */
+static void kill_ring_sync(void)
+{
+	killring.text = (killring.count > 0) ? killring.entries[0] : NULL;
+	killring.len  = (killring.count > 0) ? killring.lens[0]    : 0;
+}
 
 /* Initialize the kill ring */
 void kill_ring_init(void)
 {
 	killring.text = NULL;
 	killring.len = 0;
+	killring.entries = NULL;
+	killring.lens = NULL;
+	killring.count = 0;
 }
 
 /* Free the kill ring */
 void kill_ring_free(void)
 {
-	if (killring.text) {
-		free(killring.text);
-		killring.text = NULL;
-		killring.len = 0;
+	int i;
+
+	if (killring.entries) {
+		for (i = 0; i < killring.count; i++)
+			free(killring.entries[i]);
+		free(killring.entries);
+		killring.entries = NULL;
 	}
+	if (killring.lens) {
+		free(killring.lens);
+		killring.lens = NULL;
+	}
+	killring.count = 0;
+	killring.text = NULL;
+	killring.len = 0;
 }
 
-/* Set the kill ring to new text (replaces existing content) */
+/* Push a new entry to the front of the ring.  Drops the oldest entry
+ * when the ring is full (KILL_RING_MAX). */
 void kill_ring_set(char *text, int len)
 {
+	char *dup;
+
 	if (len <= 0) return;
 
-	kill_ring_free();
-	killring.text = malloc(len + 1);
-	if (!killring.text) return;
+	dup = malloc(len + 1);
+	if (!dup) return;
+	memcpy(dup, text, len);
+	dup[len] = '\0';
 
-	memcpy(killring.text, text, len);
-	killring.text[len] = '\0';
-	killring.len = len;
+	/* Grow arrays if needed. */
+	if (killring.count == 0) {
+		killring.entries = malloc(KILL_RING_MAX * sizeof(char *));
+		killring.lens    = malloc(KILL_RING_MAX * sizeof(int));
+		if (!killring.entries || !killring.lens) {
+			free(dup);
+			return;
+		}
+	} else if (killring.count >= KILL_RING_MAX) {
+		/* Ring full: drop the oldest entry. */
+		free(killring.entries[killring.count - 1]);
+		killring.count--;
+	}
+
+	/* Shift existing entries down and insert at front. */
+	memmove(killring.entries + 1, killring.entries,
+		killring.count * sizeof(char *));
+	memmove(killring.lens + 1, killring.lens,
+		killring.count * sizeof(int));
+	killring.entries[0] = dup;
+	killring.lens[0]    = len;
+	killring.count++;
+	kill_ring_sync();
 }
 
-/* Append text to the kill ring (for consecutive kills) */
+/* Append text to the newest entry (for consecutive kills like C-k C-k). */
 void kill_ring_append(char *text, int len)
 {
 	char *new_text;
 
 	if (len <= 0) return;
 
-	if (!killring.text) {
+	if (killring.count == 0) {
 		kill_ring_set(text, len);
 		return;
 	}
 
-	new_text = realloc(killring.text, killring.len + len + 1);
+	new_text = realloc(killring.entries[0], killring.lens[0] + len + 1);
 	if (!new_text) return;
 
-	memcpy(new_text + killring.len, text, len);
-	new_text[killring.len + len] = '\0';
-	killring.text = new_text;
-	killring.len += len;
+	memcpy(new_text + killring.lens[0], text, len);
+	new_text[killring.lens[0] + len] = '\0';
+	killring.entries[0] = new_text;
+	killring.lens[0] += len;
+	kill_ring_sync();
 }
 
-/* Get the kill ring text (returns NULL if empty) */
+/* Get the newest entry (returns NULL if empty) */
 char *kill_ring_get(void)
 {
 	return killring.text;
+}
+
+/* Get entry at ring index (0 = newest).  Returns NULL if out of range. */
+char *kill_ring_get_at(int idx, int *out_len)
+{
+	if (idx < 0 || idx >= killring.count) return NULL;
+	if (out_len) *out_len = killring.lens[idx];
+	return killring.entries[idx];
 }
 
 /* Set mark at current cursor position without echoing to the minibuffer.
@@ -370,7 +427,8 @@ void editor_delete_region_or_char(void)
 	editor_del_forward_char();
 }
 
-/* Yank (paste) from kill ring */
+/* Yank (paste) from kill ring.  Yanks the newest entry and records
+ * the yank position/length so a following M-y can replace it. */
 void editor_yank(void)
 {
 	int filerow = editor.rowoff + editor.cy;
@@ -390,5 +448,68 @@ void editor_yank(void)
 
 	editor_insert_text_raw(text, killring.len);
 
+	/* Record yank state for M-y. */
+	editor.yank_active  = 1;
+	editor.last_yank_row = filerow;
+	editor.last_yank_col = filecol;
+	editor.last_yank_len = killring.len;
+	editor.last_yank_idx = 0;
+
 	editor_set_status_message("Yanked");
+}
+
+/* Yank-pop (M-y): replace the last yank with the next-older kill-ring
+ * entry.  Only valid immediately after C-y or a previous M-y. */
+void editor_yank_pop(void)
+{
+	int next_idx, new_len;
+	char *new_text;
+
+	if (editor_readonly_blocked())
+		return;
+
+	if (!editor.yank_active) {
+		editor_set_status_message("Previous command was not a yank");
+		return;
+	}
+
+	if (killring.count < 2) {
+		editor_set_status_message("Kill ring has only one entry");
+		return;
+	}
+
+	/* Advance to the next-older entry, wrapping around. */
+	next_idx = (editor.last_yank_idx + 1) % killring.count;
+	new_text = kill_ring_get_at(next_idx, &new_len);
+	if (!new_text)
+		return;
+
+	/* Push a single undo record for the whole yank-pop: the old text
+	 * (to restore on undo) in text/len, the new text length (to delete
+	 * on undo) in c. */
+	{
+		char *old_text = kill_ring_get_at(editor.last_yank_idx, NULL);
+		undo_push(UNDO_YANK_POP, editor.last_yank_row, editor.last_yank_col,
+			  new_len, old_text, editor.last_yank_len);
+	}
+
+	/* Delete the previously yanked text. */
+	editor_cursor_goto(editor.last_yank_row, editor.last_yank_col);
+	suppress_undo = 1;
+	{
+		int i;
+		for (i = 0; i < editor.last_yank_len; i++)
+			editor_del_forward_char();
+	}
+	suppress_undo = 0;
+
+	/* Insert the older entry at the same position. */
+	editor_insert_text_raw(new_text, new_len);
+
+	/* Update yank state. */
+	editor.last_yank_len = new_len;
+	editor.last_yank_idx = next_idx;
+
+	editor_set_status_message("Yank-pop (entry %d of %d)",
+				  next_idx + 1, killring.count);
 }

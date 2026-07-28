@@ -179,6 +179,7 @@ static int parse_escape(int fd)
 	if (seq[0] == 'g') return ALT_G;
 	if (seq[0] == 'v') return ALT_V;
 	if (seq[0] == 'w') return ALT_W;
+	if (seq[0] == 'y') return ALT_Y;
 	if (seq[0] == 'q') return ALT_Q;
 	if (seq[0] == '\x7f' || seq[0] == '\b') return ALT_BACKSPACE;
 	if (seq[0] == '%') return ALT_PCT;

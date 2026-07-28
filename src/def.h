@@ -180,6 +180,7 @@ enum KEY_ACTION {
 	ALT_G,
 	ALT_V,
 	ALT_W,
+	ALT_Y,
 	ALT_Q,
 	ALT_BACKSPACE,
 	ALT_PCT,       /* M-% query-replace */
@@ -301,6 +302,11 @@ struct editor_config {
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
 	int proj_prefix;    /* 1 after C-x p, waiting for the project op key. */
 	int keep_region;    /* 1 = next command keeps the region despite dirty. */
+	int yank_active;    /* 1 = last command was C-y or M-y. */
+	int last_yank_row;  /* File row where the last yank started. */
+	int last_yank_col;  /* File col where the last yank started. */
+	int last_yank_len;  /* Bytes inserted by the last yank. */
+	int last_yank_idx;  /* Kill-ring entry used by the last yank. */
 	int desired_visual_col; /* goal column across vertical motion; -1 = unset. */
 	int readonly;       /* If 1, buffer is read-only (editing is blocked). */
 	int last_key;       /* Last key processed, for command repetition logic. */
@@ -321,10 +327,17 @@ struct abuf {
 	int len;
 };
 
-/* Kill ring (yank buffer) for copy/paste operations */
+#define KILL_RING_MAX 60
+
+/* Kill ring for copy/paste operations.  A real ring with multiple
+ * entries, newest first.  `text` and `len` always mirror the newest
+ * entry for backward compatibility with code that reads them directly. */
 struct kill_ring {
-	char *text;         /* Killed/copied text */
-	int len;            /* Length of text */
+	char *text;             /* Newest entry (killed/copied text) */
+	int   len;              /* Length of newest entry */
+	char **entries;         /* Ring entries, newest first */
+	int  *lens;             /* Length of each entry */
+	int   count;            /* Number of entries in the ring */
 };
 
 /* Undo operation types */
@@ -337,6 +350,7 @@ enum undo_type {
 	UNDO_JOIN_LINE,
 	UNDO_KILL_TEXT,   /* Kill line or region */
 	UNDO_YANK_TEXT,   /* Yank (paste) */
+	UNDO_YANK_POP,    /* M-y yank-pop: replace last yank with older entry */
 	UNDO_REFLOW_PARA, /* M-q paragraph reflow */
 	UNDO_RECT_OVERWRITE, /* Rectangle kill/delete/clear/yank: restore rows */
 	UNDO_BOUNDARY     /* Marker: undo stops here, grouping prior ops */
@@ -690,6 +704,8 @@ void editor_copy_region(void);
 char *editor_get_region_text(int *out_len);
 void editor_sort_lines(void);
 void editor_yank(void);
+void editor_yank_pop(void);
+char *kill_ring_get_at(int idx, int *out_len);
 
 /* undo.c */
 void undo_init(void);

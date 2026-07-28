@@ -397,6 +397,11 @@ void editor_process_keypress(int fd)
 	 * a new expansion (Emacs behaviour). */
 	if (c != TAB) dabbrev_reset();
 
+	/* Clear yank-pop state on any key that isn't C-y or M-y, so M-y
+	 * only chains from an immediately preceding yank (Emacs behaviour). */
+	if (c != CTRL_Y && c != ALT_Y)
+		editor.yank_active = 0;
+
 	/* Shift+motion: drop the mark at the current position the first
 	 * time the user starts a shift-selected region, so subsequent
 	 * shift+motion extends it.  If a region is already on-screen we
@@ -721,6 +726,9 @@ void editor_process_keypress(int fd)
 	case ALT_W:         /* Copy region */
 	case CTRL_INSERT:   /* CUA copy */
 		editor_copy_region();
+		break;
+	case ALT_Y:         /* M-y: yank-pop (cycle kill ring) */
+		editor_yank_pop();
 		break;
 	case ALT_Q:         /* Reflow paragraph */
 		editor_reflow_paragraph();
