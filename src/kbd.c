@@ -390,8 +390,6 @@ void editor_process_keypress(int fd)
 	}
 
 	/* Reset cycle states if the previous key wasn't the cycling command. */
-	if (editor.last_key != CTRL_L)
-		editor.recenter_state = 0;
 	if (editor.last_key != ALT_R)
 		editor.window_line_state = 0;
 	editor.last_key = c;
@@ -762,22 +760,14 @@ void editor_process_keypress(int fd)
 		else
 			macro_replay(fd);
 		break;
-	case CTRL_L: {      /* Recenter: cycle center → top → bottom */
+	case CTRL_L: {      /* Recenter: center point in the window */
 		int filerow = editor.rowoff + editor.cy;
-		switch (editor.recenter_state) {
-		case 0: /* center */
-			editor.rowoff = filerow - editor.screenrows / 2;
-			break;
-		case 1: /* top */
-			editor.rowoff = filerow;
-			break;
-		default: /* bottom */
-			editor.rowoff = filerow - (editor.screenrows - 1);
-			break;
-		}
+		int max_rowoff = editor.numrows - editor.screenrows;
+		editor.rowoff = filerow - editor.screenrows / 2;
+		if (max_rowoff < 0) max_rowoff = 0;
+		if (editor.rowoff > max_rowoff) editor.rowoff = max_rowoff;
 		if (editor.rowoff < 0) editor.rowoff = 0;
 		editor.cy = filerow - editor.rowoff;
-		editor.recenter_state = (editor.recenter_state + 1) % 3;
 		probe_window_size();
 		tty_write("\x1b[2J", 4);
 		editor_refresh_screen();
