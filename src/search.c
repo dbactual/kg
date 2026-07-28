@@ -224,7 +224,7 @@ void editor_find(int fd, int direction)
 				editor.cx = saved_cx; editor.cy = saved_cy;
 				editor.coloff = saved_coloff; editor.rowoff = saved_rowoff;
 			}
-			if (c == ENTER && qlen > 0)
+			if ((c == ENTER || c == CTRL_G) && qlen > 0)
 				strcpy(last_search_query, query);
 			RESTORE_HL;
 			editor_set_status_message("");
