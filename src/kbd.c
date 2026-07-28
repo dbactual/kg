@@ -244,8 +244,8 @@ void editor_process_keypress(int fd)
 		case 'b':       /* C-x b: Interactive buffer select */
 			buf_select_interactive(fd);
 			break;
-		case 'k':       /* C-x k: Kill current buffer */
-			buf_kill(fd);
+		case 'k':       /* C-x k: Kill buffer (interactive picker) */
+			buf_kill_interactive(fd);
 			break;
 		case CTRL_B:    /* C-x C-b: Open buffer list */
 			buf_open_list();

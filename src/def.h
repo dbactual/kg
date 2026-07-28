@@ -476,6 +476,7 @@ int  editor_path_complete_entries(const char *dir, const char *prefix,
 int  editor_picker_match_rank(const char *haystack, const char *needle);
 void buf_load_args(int nfiles, char **filenames, int readonly);
 void buf_select_interactive(int fd);
+void buf_kill_interactive(int fd);
 void buf_open_file(int fd);
 void buf_open_file_read_only(int fd);
 void buf_kill(int fd);

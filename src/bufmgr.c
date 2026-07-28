@@ -942,6 +942,131 @@ void buf_select_interactive(int fd)
 	}
 }
 
+/* Interactive buffer kill (C-x k).  Lists every open buffer in the
+ * vertical completion panel with the current buffer pre-selected (the
+ * Emacs kill-buffer default).  Up/Down navigate, typing filters, Enter
+ * kills the selected buffer (buf_kill still prompts when it is
+ * modified), ESC/C-g cancels.  Killing a non-current buffer leaves the
+ * user in the buffer they were editing; killing the current buffer
+ * falls through to buf_kill's nearest-remaining switch. */
+void buf_kill_interactive(int fd)
+{
+	const char prompt[] = "Kill buffer: ";
+	const int  plen     = sizeof(prompt) - 1;
+	int order[MAX_BUFFERS], n = 0;
+	char query[64];
+	int qlen = 0, sel = 0;
+	int i, c;
+	char msg[512];
+	int off;
+	const int origin = buf_current;
+
+	query[0] = '\0';
+
+	/* Current buffer first (the default), then the rest in slot order. */
+	if (origin >= 0 && origin < MAX_BUFFERS && buflist[origin].active)
+		order[n++] = origin;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (i != origin && buflist[i].active) order[n++] = i;
+	}
+	if (n == 0) {
+		editor_set_status_message("No buffers.");
+		return;
+	}
+
+	{
+		static char namebuf[MAX_BUFFERS][128];
+		const char *names[MAX_BUFFERS];
+		int match_idx[MAX_BUFFERS];
+
+		picker_panel_open(n);
+
+		while (1) {
+			int matches = 0;
+
+			for (i = 0; i < n; i++)
+				buf_display_name(order[i], namebuf[i], sizeof(namebuf[i]));
+
+			for (i = 0; i < n; i++) {
+				if (editor_picker_match_rank(namebuf[i], query) != 0)
+					continue;
+				names[matches]     = namebuf[i];
+				match_idx[matches] = order[i];
+				matches++;
+			}
+			if (qlen > 0) {
+				for (i = 0; i < n; i++) {
+					if (editor_picker_match_rank(namebuf[i], query) != 1)
+						continue;
+					names[matches]     = namebuf[i];
+					match_idx[matches] = order[i];
+					matches++;
+				}
+			}
+			if (sel >= matches) sel = matches > 0 ? matches - 1 : 0;
+
+			if (picker_panel_active()) {
+				picker_panel_render(names, matches, sel);
+				editor_set_status_message("%s%s", prompt, query);
+			} else {
+				off = 0;
+				editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, query);
+				editor_picker_render(msg, sizeof(msg), &off, names, matches, matches, sel);
+				editor_set_status_message("%s", msg);
+			}
+			editor.echo_cursor_col = plen + qlen + 1;
+			editor_refresh_screen();
+
+			c = editor_read_key(fd);
+			if (c == DEL_KEY || c == CTRL_H || c == BACKSPACE) {
+				if (qlen > 0) query[--qlen] = '\0';
+				sel = 0;
+			} else if (c == ARROW_DOWN || c == CTRL_N ||
+			           c == ARROW_RIGHT || c == CTRL_F) {
+				if (matches > 0) sel = (sel + 1) % matches;
+			} else if (c == ARROW_UP || c == CTRL_P ||
+			           c == ARROW_LEFT || c == CTRL_B) {
+				if (matches > 0) sel = (sel - 1 + matches) % matches;
+			} else if (c == ENTER) {
+				int target, killed;
+
+				picker_panel_close();
+				editor.echo_cursor_col = 0;
+				if (matches <= 0) {
+					editor_set_status_message("");
+					return;
+				}
+				target = match_idx[sel];
+				if (target != buf_current) {
+					buf_save_current_state();
+					buf_restore_from_slot(target);
+				}
+				buf_kill(fd);   /* prompts if modified */
+				killed = !buflist[target].active;
+				if (target != origin &&
+				    origin >= 0 && origin < MAX_BUFFERS &&
+				    buflist[origin].active) {
+					buf_save_current_state();
+					buf_restore_from_slot(origin);
+					if (killed)
+						editor_set_status_message("Killed buffer %s",
+						                          names[sel]);
+				}
+				return;
+			} else if (c == ESC || c == CTRL_G) {
+				picker_panel_close();
+				editor.echo_cursor_col = 0;
+				editor_set_status_message("");
+				return;
+			} else if (isprint(c) && qlen < (int)sizeof(query) - 1) {
+				query[qlen++] = c;
+				query[qlen]   = '\0';
+				sel = 0;
+			}
+		}
+	}
+}
+
 /* Find the slot of the active buffer whose stored filename equals `fn`,
  * or -1 if none.  Compares the full stored path, like the existing-buffer
  * check that used to live inline in buf_open_file_ro. */
