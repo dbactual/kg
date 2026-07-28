@@ -45,6 +45,11 @@ static void cmd_goto_line(int fd)
 	editor_goto_line(fd);
 }
 
+static void cmd_query_replace(int fd)
+{
+	editor_query_replace(fd);
+}
+
 /* Select the window in the given direction (M-arrow). */
 static void cmd_windmove_left(int fd)  { (void)fd; win_move_dir(-1, 0); }
 static void cmd_windmove_right(int fd) { (void)fd; win_move_dir(1, 0);  }
@@ -260,6 +265,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "grep",                     cmd_grep,                    CMD_NONE },
 	{ "project-find-file",        cmd_project_find_file,       CMD_NONE },
 	{ "project-grep",             cmd_project_grep,            CMD_NONE },
+	{ "query-replace",            cmd_query_replace,           CMD_NONE },
 	{ "join-line",                cmd_join_line,               CMD_EDITS_BUFFER },
 	{ "just-one-space",           cmd_just_one_space,          CMD_EDITS_BUFFER },
 	{ "make-backup-files",        cmd_make_backup_files,       CMD_NONE },

@@ -515,6 +515,13 @@ void editor_query_replace(int fd)
 				editor_row_insert_char(row, match_col + i, (unsigned char)rep[i]);
 			suppress_undo = 0;
 
+			/* The replace called editor_update_syntax(row), which
+			 * reallocated and reset row->hl.  Our saved_hl snapshot is
+			 * now stale (wrong rsize, wrong content); discard it so the
+			 * next RESTORE_HL is a no-op instead of corrupting the row. */
+			free(saved_hl);
+			saved_hl = NULL;
+
 			prev_row = filerow;
 			prev_col = match_col;
 
