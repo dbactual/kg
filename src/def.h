@@ -633,6 +633,7 @@ void editor_shell_command(int fd);
 void editor_shell_command_on_region(int fd);
 char *shell_run(const char *cmd, const char *in, int inlen, int *out_len);
 void copy_to_clipboard(const char *text, int len);
+void editor_copy_file_line(void);
 
 /* syntax.c */
 int is_separator(int c);

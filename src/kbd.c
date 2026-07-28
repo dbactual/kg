@@ -212,6 +212,7 @@ void editor_process_keypress(int fd)
 		editor.cc_prefix = 0;
 		switch (c) {
 		case 'g':              editor_goto_line(fd); break;  /* C-c g: goto line */
+		case 'f':              editor_copy_file_line(); break; /* C-c f: copy file:line */
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-c %c is undefined", c); break;
 		}

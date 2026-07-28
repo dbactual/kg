@@ -219,6 +219,33 @@ void copy_to_clipboard(const char *text, int len)
 	free(out);
 }
 
+/* C-c f: copy the full path of the current file and the current line
+ * number to the system clipboard as "file:line". */
+void editor_copy_file_line(void)
+{
+	char abs[1024];
+	char msg[1100];
+	int line = editor.rowoff + editor.cy + 1;
+	const char *path = editor.filename;
+	int len;
+
+	if (!path || path[0] == '*') {
+		editor_set_status_message("No file name");
+		return;
+	}
+	if (!realpath(path, abs)) {
+		editor_set_status_message("Cannot resolve path");
+		return;
+	}
+	len = snprintf(msg, sizeof msg, "%s:%d", abs, line);
+	if (len < 0 || len >= (int)sizeof msg) {
+		editor_set_status_message("Path too long");
+		return;
+	}
+	copy_to_clipboard(msg, len);
+	editor_set_status_message("Copied %s", msg);
+}
+
 /* M-! shell-command: prompt, run, insert stdout at point. */
 void editor_shell_command(int fd)
 {
