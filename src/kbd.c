@@ -347,6 +347,10 @@ void editor_process_keypress(int fd)
 			vc_filediff_close(fd);
 			return;
 		}
+		if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER)) {
+			buf_ibuffer_close(fd);
+			return;
+		}
 		buf_kill(fd);
 		return;
 	}

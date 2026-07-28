@@ -1330,11 +1330,53 @@ void buf_open_help(void)
 /* Open the buffer named on the current IBuffer line.
  * Line format: " M  <24-char name>  <6-char size>  <14-char mode>  <filename>"
  * The full filename starts at byte offset 54. */
+/* Close the buffer list panel window (if it's in a bottom panel)
+ * and switch focus to the remaining window.  Returns 1 if the panel
+ * was closed, 0 if the list is in the only window. */
+static int buf_ibuffer_close_panel(void)
+{
+	int ibuf_win, j;
+
+	if (win_count <= 1) return 0;
+
+	ibuf_win = win_current;
+	for (j = 0; j < MAX_WINDOWS; j++) {
+		if (j != ibuf_win && winlist[j].active) {
+			win_focus(j);
+			break;
+		}
+	}
+	winlist[ibuf_win].active = 0;
+	win_count--;
+	win_fill_screen(&winlist[win_current]);
+	win_sync_view();
+	return 1;
+}
+
+/* q in the *Buffer List*: close the panel window and kill the buffer,
+ * returning to the previous buffer in the main window. */
+void buf_ibuffer_close(int fd)
+{
+	if (buf_ibuffer_close_panel()) {
+		/* Panel closed; now kill the *Buffer List* buffer itself.
+		 * buf_kill switches to the nearest remaining buffer. */
+		int i;
+		for (i = 0; i < MAX_BUFFERS; i++) {
+			if (buflist[i].active && buflist[i].filename &&
+			    strcmp(buflist[i].filename, IBUF_NAME) == 0) {
+				buf_restore_from_slot(i);
+				break;
+			}
+		}
+	}
+	buf_kill(fd);
+}
+
 void buf_ibuffer_select(void)
 {
 	int filerow = editor.rowoff + editor.cy;
 	const char *filename;
-	int i, ibuf_win;
+	int i;
 
 	if (editor.syntax != &ibuffer_syntax) return; /* only valid in IBuffer mode */
 	if (filerow < IBUF_HEADER_ROWS || filerow >= editor.numrows) return; /* skip header rows */
@@ -1347,28 +1389,7 @@ void buf_ibuffer_select(void)
 	for (i = 0; i < MAX_BUFFERS; i++) {
 		if (!buflist[i].active || !buflist[i].filename) continue;
 		if (strcmp(buflist[i].filename, filename) == 0) {
-			if (win_count > 1) {
-				/* The buffer list is in a bottom panel.  Switch to
-				 * another window, close the panel, then open the
-				 * selected buffer in the remaining window. */
-				ibuf_win = win_current;
-				/* Find any other window to switch to. */
-				{
-					int j;
-					for (j = 0; j < MAX_WINDOWS; j++) {
-						if (j != ibuf_win && winlist[j].active) {
-							win_focus(j);
-							break;
-						}
-					}
-				}
-				/* Close the ibuffer panel window. */
-				winlist[ibuf_win].active = 0;
-				win_count--;
-				/* Expand the focused window to fill the space. */
-				win_fill_screen(&winlist[win_current]);
-				win_sync_view();
-			}
+			buf_ibuffer_close_panel();
 			buf_save_current_state();
 			buf_restore_from_slot(i);
 			editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");

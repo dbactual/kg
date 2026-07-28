@@ -470,6 +470,7 @@ int buf_save_all(int fd);
 void buf_open_list(void);
 void buf_open_help(void);
 void buf_ibuffer_select(void);
+void buf_ibuffer_close(int fd);
 int  buf_find_by_filename(const char *fn);
 int  buf_open_path(const char *path, int readonly);
 int  buf_create_scratch(const char *name);
