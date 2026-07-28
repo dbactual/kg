@@ -519,6 +519,8 @@ void win_restore_active_view(void);
 void win_split_horizontal(void);
 int  win_split_bottom(int new_h);
 void win_focus(int idx);
+void win_fill_screen(struct editor_window *w);
+void win_sync_view(void);
 void win_split_vertical(void);
 void win_cycle_next(void);
 void win_move_dir(int dx, int dy);

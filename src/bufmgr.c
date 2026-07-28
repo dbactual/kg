@@ -1326,7 +1326,7 @@ void buf_ibuffer_select(void)
 {
 	int filerow = editor.rowoff + editor.cy;
 	const char *filename;
-	int i;
+	int i, ibuf_win;
 
 	if (editor.syntax != &ibuffer_syntax) return; /* only valid in IBuffer mode */
 	if (filerow < IBUF_HEADER_ROWS || filerow >= editor.numrows) return; /* skip header rows */
@@ -1339,6 +1339,28 @@ void buf_ibuffer_select(void)
 	for (i = 0; i < MAX_BUFFERS; i++) {
 		if (!buflist[i].active || !buflist[i].filename) continue;
 		if (strcmp(buflist[i].filename, filename) == 0) {
+			if (win_count > 1) {
+				/* The buffer list is in a bottom panel.  Switch to
+				 * another window, close the panel, then open the
+				 * selected buffer in the remaining window. */
+				ibuf_win = win_current;
+				/* Find any other window to switch to. */
+				{
+					int j;
+					for (j = 0; j < MAX_WINDOWS; j++) {
+						if (j != ibuf_win && winlist[j].active) {
+							win_focus(j);
+							break;
+						}
+					}
+				}
+				/* Close the ibuffer panel window. */
+				winlist[ibuf_win].active = 0;
+				win_count--;
+				/* Expand the focused window to fill the space. */
+				win_fill_screen(&winlist[win_current]);
+				win_sync_view();
+			}
 			buf_save_current_state();
 			buf_restore_from_slot(i);
 			editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");

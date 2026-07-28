@@ -78,7 +78,7 @@ void win_restore_active_view(void)
 
 /* Push the current window's size into the live editor view and clamp
  * the cursor to the new bounds. */
-static void win_sync_view(void)
+void win_sync_view(void)
 {
 	editor.screenrows = winlist[win_current].h;
 	editor.screencols = winlist[win_current].w;
@@ -90,7 +90,7 @@ static void win_sync_view(void)
 }
 
 /* Give the window the whole screen above the echo area. */
-static void win_fill_screen(struct editor_window *w)
+void win_fill_screen(struct editor_window *w)
 {
 	w->y = 1;
 	w->x = 1;
