@@ -70,6 +70,7 @@ void init_editor(void)
 	editor.disk_changed = 0;
 	editor.auto_revert = 0;
 	editor.backed_up = 0;
+	editor.scratch = 0;
 	editor.prefix_pending = 0;
 	editor.prefix_arg = 0;
 	editor.prefix_no_digits = 0;

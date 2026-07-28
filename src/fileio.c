@@ -214,7 +214,7 @@ int editor_save(int fd)
 	int len;
 	int answer;
 
-	if (is_special_buffer(editor.filename)) {
+	if (is_special_buffer(editor.filename) || editor.scratch) {
 		char newname[256];
 
 		editor_prompt_prefill_dir(newname, sizeof(newname));
@@ -273,6 +273,7 @@ int editor_save(int fd)
 	free(buf);
 	editor.dirty = 0;
 	editor.backed_up = 1;
+	editor.scratch = 0;
 	undo_mark_clean();  /* Mark this state as clean for undo tracking */
 	editor_snapshot_disk();
 	editor_set_status_message("Wrote %s (%d bytes)", editor.filename, len);

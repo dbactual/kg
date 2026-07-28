@@ -309,6 +309,7 @@ struct editor_config {
 	int disk_changed;   /* Set by the auto-revert poll when disk differs. */
 	int auto_revert;    /* Per-buffer auto-revert toggle. */
 	int backed_up;      /* 1 once a foo~ backup was made this visit. */
+	int scratch;        /* 1 = buffer not visiting a file; C-x C-s prompts. */
 	int fill_column;    /* Column M-q reflows to; set with C-x f. */
 };
 
@@ -392,6 +393,7 @@ struct editor_buffer {
 	int disk_changed;
 	int auto_revert;
 	int backed_up;
+	int scratch;            /* 1 = not visiting a file; save prompts for name */
 	int fill_column;
 };
 
@@ -452,6 +454,7 @@ void buf_open_help(void);
 void buf_ibuffer_select(void);
 int  buf_find_by_filename(const char *fn);
 int  buf_open_path(const char *path, int readonly);
+int  buf_create_scratch(const char *name);
 void buf_open_special(const char *name, struct editor_syntax *syn,
                       void (*populate)(void), const char *status);
 void vc_open_status(void);

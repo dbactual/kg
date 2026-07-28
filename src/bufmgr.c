@@ -49,6 +49,7 @@ static void buf_save_to_slot(int idx)
 	b->disk_changed = editor.disk_changed;
 	b->auto_revert = editor.auto_revert;
 	b->backed_up = editor.backed_up;
+	b->scratch = editor.scratch;
 	b->fill_column = editor.fill_column;
 	b->active = 1;
 }
@@ -77,6 +78,7 @@ static void buf_restore_from_slot(int idx)
 	editor.disk_changed = b->disk_changed;
 	editor.auto_revert = b->auto_revert;
 	editor.backed_up = b->backed_up;
+	editor.scratch = b->scratch;
 	editor.fill_column = b->fill_column;
 	buf_current = idx;
 	/* Keep the active window pointing at the newly-restored buffer. */
@@ -275,6 +277,7 @@ static void buf_reset(void)
 	editor.disk_changed = 0;
 	editor.auto_revert = 0;
 	editor.backed_up = 0;
+	editor.scratch = 0;
 	editor.fill_column = DEFAULT_FILL_COLUMN;
 	undo_init();
 }
@@ -286,6 +289,7 @@ static void buf_new_scratch(int slot)
 {
 	buf_reset();
 	editor.filename = strdup("*scratch*");
+	editor.scratch = 1;
 	editor.syntax = &text_syntax;
 	buf_save_to_slot(slot);
 	buflist[slot].active = 1;
@@ -879,6 +883,10 @@ void buf_select_interactive(int fd)
 				if (matches > 0) {
 					buf_save_current_state();
 					buf_restore_from_slot(match_idx[sel]);
+				} else if (qlen > 0) {
+					/* No match: create a new scratch buffer with the
+					 * typed name, like Emacs C-x b on a new name. */
+					buf_create_scratch(query);
 				}
 				return;
 			} else if (c == ESC || c == CTRL_G) {
@@ -970,6 +978,35 @@ static void buf_open_file_ro(int fd, int readonly)
 
 void buf_open_file(int fd)     { buf_open_file_ro(fd, 0); }
 void buf_open_file_read_only(int fd) { buf_open_file_ro(fd, 1); }
+
+/* Create a fresh, empty scratch buffer named `name` (not visiting any
+ * file) in a free slot and switch to it.  Used by C-x b when the typed
+ * name doesn't match an existing buffer.  Returns the slot or -1. */
+int buf_create_scratch(const char *name)
+{
+	int i, slot;
+
+	if (buf_count >= MAX_BUFFERS) {
+		editor_set_status_message("Too many open buffers (%d max).", MAX_BUFFERS);
+		return -1;
+	}
+	slot = -1;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (!buflist[i].active) { slot = i; break; }
+	}
+	if (slot < 0) return -1;
+
+	buf_save_current_state();
+	buf_reset();
+	editor.filename = strdup(name);
+	editor.scratch = 1;
+	editor.syntax = &text_syntax;
+	buf_save_to_slot(slot);
+	buflist[slot].active = 1;
+	buf_count++;
+	buf_restore_from_slot(slot);
+	return slot;
+}
 
 /* Save a buffer slot to its file without switching to it, through the same
  * atomic write and backup as editor_save so that C-x s and C-x C-s keep a
