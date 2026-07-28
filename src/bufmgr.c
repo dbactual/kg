@@ -1230,9 +1230,11 @@ static void buf_list_populate(void)
 	}
 }
 
-/* Open (or refresh) a *Buffer List* buffer in the current window (C-x C-b).
- * Lists all open buffers with modification flag, name, size, mode, and path.
- * Press q or C-x k to close. */
+/* Open (or refresh) a *Buffer List* buffer in a bottom panel window
+ * (C-x C-b).  The panel height is sized to the buffer count (plus the
+ * two header rows), capped at half the screen height so the editing
+ * window stays visible.  Arrow keys and mouse wheel scroll the list
+ * when it overflows.  Press q or C-x k to close. */
 void buf_open_list(void)
 {
 	int prev = buf_current;
@@ -1242,12 +1244,44 @@ void buf_open_list(void)
 			buflist[prev].active && \
 			buflist[prev].filename)
 		? buflist[prev].filename : NULL;
+	int i, nbuf = 0, panel_h, slot;
+	int already_open = 0;
+
+	/* Count active buffers to size the panel. */
+	for (i = 0; i < MAX_BUFFERS; i++)
+		if (buflist[i].active) nbuf++;
+
+	/* If the *Buffer List* is already open in the current window,
+	 * just refresh it in place (don't create another window). */
+	if (editor.filename && strcmp(editor.filename, IBUF_NAME) == 0)
+		already_open = 1;
+
+	if (!already_open) {
+		/* Size: buffers + 2 header rows, capped at half the screen. */
+		panel_h = nbuf + 2;
+		if (panel_h > editor.screenrows / 2)
+			panel_h = editor.screenrows / 2;
+		if (panel_h < 3) panel_h = 3;
+
+		slot = win_split_bottom(panel_h);
+		if (slot < 0) {
+			/* Couldn't split -- fall back to opening in-place. */
+			buf_open_special(IBUF_NAME, &ibuffer_syntax,
+			                 buf_list_populate,
+			                 "Buffer list -- RET to open, q or C-x k to close.");
+			goto preselect;
+		}
+
+		/* Switch focus to the new bottom window and open the list. */
+		win_focus(slot);
+	}
 
 	buf_open_special(IBUF_NAME, &ibuffer_syntax, buf_list_populate,
-	                 "Buffer list — RET to open, q or C-x k to close.");
+	                 "Buffer list -- RET to open, q or C-x k to close.");
 
+preselect:
 	if (prevfile) {
-		int i, target = -1;
+		int target = -1;
 		for (i = 2; i < editor.numrows; i++) {
 			if (editor.row[i].size > IBUF_FILENAME_OFFSET &&
 			    strcmp(editor.row[i].chars + IBUF_FILENAME_OFFSET,

@@ -124,6 +124,33 @@ static int win_free_slot(void)
 	return -1;
 }
 
+/* Split the current window, keeping the top N rows and giving the
+ * rest to a new window below.  Used by buf_open_list() to open the
+ * buffer list in a fixed-height bottom panel.  Returns the new
+ * window's winlist index, or -1 on failure. */
+int win_split_bottom(int new_h)
+{
+	struct editor_window *cur = &winlist[win_current];
+	int slot, h = cur->h;
+
+	if (win_count >= MAX_WINDOWS) return -1;
+	if (new_h < MIN_WIN_ROWS) new_h = MIN_WIN_ROWS;
+	if (new_h > h - MIN_WIN_ROWS - 1) new_h = h - MIN_WIN_ROWS - 1;
+	if (new_h < 1) return -1;
+
+	slot = win_free_slot();
+	buf_save_current_state();
+
+	winlist[slot]   = *cur;
+	cur->h          = h - 1 - new_h;  /* top keeps the rest */
+	winlist[slot].y = cur->y + cur->h + 1;
+	winlist[slot].h = new_h;
+
+	win_count++;
+	win_sync_view();
+	return slot;
+}
+
 /* Split the current window (C-x 2): it keeps the upper half, a new
  * window showing the same buffer takes the lower half.  Other windows
  * are not disturbed. */
@@ -185,7 +212,7 @@ void win_split_vertical(void)
 
 /* Switch focus to window `idx`: save the old view, load the new one,
  * and echo the buffer name. */
-static void win_focus(int idx)
+void win_focus(int idx)
 {
 	buf_save_current_state();
 	win_current = idx;
