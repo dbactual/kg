@@ -228,8 +228,13 @@ void editor_indent_rigidly(int n)
 	if (editor.mark_row < cur_row ||
 	    (editor.mark_row == cur_row && editor.mark_col < cur_col)) {
 		r0 = editor.mark_row; r1 = cur_row;
+		/* The region end (point) at column 0 means no text is selected
+		 * on that line — Emacs treats the region as [mark, point), so
+		 * a point sitting at BOL excludes its line.  Don't indent it. */
+		if (cur_col == 0 && r1 > r0) r1--;
 	} else {
 		r0 = cur_row; r1 = editor.mark_row;
+		if (editor.mark_col == 0 && r1 > r0) r1--;
 	}
 	if (r0 < 0) r0 = 0;
 	if (r1 >= editor.numrows) r1 = editor.numrows - 1;
