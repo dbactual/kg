@@ -249,9 +249,9 @@ void project_find_file(int fd)
 		if (c == DEL_KEY || c == CTRL_H || c == BACKSPACE) {
 			if (qlen > 0) query[--qlen] = '\0';
 			sel = 0;
-		} else if (c == ARROW_RIGHT || c == CTRL_F) {
+		} else if (c == ARROW_RIGHT || c == CTRL_F || c == TAB) {
 			if (shown > 0) sel = (sel + 1) % shown;
-		} else if (c == ARROW_LEFT || c == CTRL_B) {
+		} else if (c == ARROW_LEFT || c == CTRL_B || c == SHIFT_TAB) {
 			if (shown > 0) sel = (sel - 1 + shown) % shown;
 		} else if (c == ENTER) {
 			editor.echo_cursor_col = 0;
