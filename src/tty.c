@@ -363,6 +363,7 @@ static int parse_escape(int fd)
 			case 'b': return SHIFT_ARROW_DOWN;
 			case 'c': return SHIFT_ARROW_RIGHT;
 			case 'd': return SHIFT_ARROW_LEFT;
+			case 'Z': return SHIFT_TAB;
 			}
 		}
 	/* ESC O sequences */

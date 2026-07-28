@@ -173,6 +173,7 @@ enum KEY_ACTION {
 	SHIFT_INSERT,    /* CUA paste */
 	SHIFT_DELETE,    /* CUA cut */
 	CTRL_INSERT,     /* CUA copy */
+	SHIFT_TAB,       /* Shift-Tab (CSI Z) -- reverse indent */
 	ALT_F,
 	ALT_B,
 	ALT_D,

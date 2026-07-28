@@ -438,6 +438,16 @@ void editor_process_keypress(int fd)
 				editor_insert_char_auto_complete(TAB);
 		}
 		break;
+	case SHIFT_TAB:     /* Shift-Tab: de-indent the active region */
+		if (editor.mark_set && editor.mark_highlight) {
+			if (editor_readonly_blocked())
+				break;
+			while (n--) editor_indent_rigidly(-4);
+		}
+		/* Without an active region, Shift-Tab is ignored (Emacs binds it
+		 * to backward-tab in some modes, but kg has no per-language
+		 * indenter to drive). */
+		break;
 	case CTRL_A:        /* Beginning of line */
 		editor_move_cursor(HOME_KEY);
 		break;

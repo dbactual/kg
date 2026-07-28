@@ -217,13 +217,15 @@ void editor_indent_rigidly(int n)
 	int cur_col = editor.coloff + editor.cx;
 	int r0, r1, r, i;
 	char spaces[16];
+	int outdent = (n < 0);
+	int absn = outdent ? -n : n;
 
 	if (!editor.mark_set || !editor.mark_highlight) return;
-	if (n <= 0 || n > (int)sizeof(spaces) - 1) return;
+	if (absn <= 0 || absn > (int)sizeof(spaces) - 1) return;
 	if (editor_readonly_blocked()) return;
 
-	for (i = 0; i < n; i++) spaces[i] = ' ';
-	spaces[n] = '\0';
+	for (i = 0; i < absn; i++) spaces[i] = ' ';
+	spaces[absn] = '\0';
 
 	if (editor.mark_row < cur_row ||
 	    (editor.mark_row == cur_row && editor.mark_col < cur_col)) {
@@ -239,27 +241,58 @@ void editor_indent_rigidly(int n)
 	if (r0 < 0) r0 = 0;
 	if (r1 >= editor.numrows) r1 = editor.numrows - 1;
 
-	/* Insert n spaces at column 0 of each line in the range.  Rows may
-	 * shift as we insert (editor_insert_row re-indexes), but inserting at
-	 * col 0 of an existing row doesn't add rows, so the range stays valid. */
 	for (r = r0; r <= r1; r++) {
-		/* Position cursor at start of row r, then insert the spaces. */
+		erow *row = &editor.row[r];
 		editor_cursor_goto(r, 0);
-		editor_insert_text_raw(spaces, n);
+		if (!outdent) {
+			/* Indent: insert absn spaces at column 0. */
+			editor_insert_text_raw(spaces, absn);
+		} else {
+			/* De-indent: remove up to absn leading spaces.  Only
+			 * spaces count (tabs are left alone), matching Emacs
+			 * indent-rigidly with a negative arg. */
+			int avail = 0;
+			while (avail < absn && avail < row->size &&
+			       row->chars[avail] == ' ')
+				avail++;
+			if (avail > 0) {
+				int j;
+				for (j = 0; j < avail; j++)
+					editor_row_del_char(row, 0);
+				editor.dirty++;
+			}
+		}
 	}
-	/* The insertions shifted text right by n on every indented line.
-	 * Adjust the mark and point columns only if their row was actually
-	 * indented — a point sitting at BOL on the excluded (last) line
-	 * should stay put, since nothing was inserted there. */
-	if (editor.mark_row >= r0 && editor.mark_row <= r1)
-		editor.mark_col += n;
-	if (cur_row >= r0 && cur_row <= r1)
-		cur_col += n;
+	/* Adjust the mark and point columns only if their row was actually
+	 * touched — a point sitting at BOL on the excluded (last) line
+	 * should stay put, since nothing was inserted/deleted there. */
+	if (editor.mark_row >= r0 && editor.mark_row <= r1) {
+		if (!outdent) editor.mark_col += absn;
+		else {
+			int lead = 0;
+			erow *mrow = &editor.row[editor.mark_row];
+			while (lead < absn && lead < mrow->size &&
+			       mrow->chars[lead] == ' ') lead++;
+			if (editor.mark_col > lead) editor.mark_col -= lead;
+			else editor.mark_col = 0;
+		}
+	}
+	if (cur_row >= r0 && cur_row <= r1) {
+		if (!outdent) cur_col += absn;
+		else {
+			int lead = 0;
+			erow *crow = &editor.row[cur_row];
+			while (lead < absn && lead < crow->size &&
+			       crow->chars[lead] == ' ') lead++;
+			if (cur_col > lead) cur_col -= lead;
+			else cur_col = 0;
+		}
+	}
 	editor_cursor_goto(cur_row, cur_col);
-	/* Keep the region highlighted for further TAB presses. */
+	/* Keep the region highlighted for further TAB/Shift-Tab presses. */
 	editor.mark_highlight = 1;
 	/* Tell the post-command deactivation logic to leave the region
 	 * alone: indent-rigidly intentionally keeps it for repeated TAB. */
 	editor.keep_region = 1;
-	editor_set_status_message("Region indented");
+	editor_set_status_message(outdent ? "Region de-indented" : "Region indented");
 }
