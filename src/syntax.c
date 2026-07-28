@@ -1183,7 +1183,7 @@ void editor_update_syntax(erow *row)
  *   HL_KEYWORD2           font-lock-type-face           (ForestGreen / PaleGreen)
  *   HL_STRING             font-lock-string-face         (RosyBrown / LightSalmon)
  *   HL_NUMBER             (Emacs has no number face)    — default-ish
- *   HL_MATCH              search match — not an Emacs foreground; keep blue
+ *   HL_MATCH              isearch face — magenta/pink background, white fg
  *
  * Background pick (cached once):
  *   - $KG_BG=dark|light forces it
@@ -1294,7 +1294,14 @@ static void vc_init_colors(void)
 
 	/* Non-Emacs tokens: keep the basic ANSI codes that worked before. */
 	snprintf(color_seq[HL_NUMBER], sizeof color_seq[0], "\x1b[37m");  /* default-ish */
-	snprintf(color_seq[HL_MATCH],  sizeof color_seq[0], "\x1b[34m");  /* blue        */
+	/* Search match: Emacs' isearch face is a magenta/pink background
+	 * with white foreground.  Use true-colour when available, else the
+	 * 8-color magenta+white fallback.  */
+	if (tc)
+		snprintf(color_seq[HL_MATCH], sizeof color_seq[0],
+		         "\x1b[48;2;215;0;215m\x1b[38;2;255;255;255m"); /* magenta bg, white fg */
+	else
+		snprintf(color_seq[HL_MATCH], sizeof color_seq[0], "\x1b[45;37m");
 	snprintf(color_seq[HL_NORMAL], sizeof color_seq[0], "\x1b[37m");  /* white       */
 
 	color_seq_ready = 1;
