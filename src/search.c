@@ -388,6 +388,7 @@ void editor_query_replace(int fd)
 	int slen, rlen, fold;
 	int filerow, match_col;
 	int count = 0, replace_all = 0;
+	char prompt[256];
 
 	if (editor_readonly_blocked())
 		return;
@@ -403,6 +404,10 @@ void editor_query_replace(int fd)
 	filerow   = editor.rowoff + editor.cy;
 	match_col = editor.coloff + editor.cx;
 
+	/* History for `^` (back up): remember the last replaced match so we
+	 * can re-position there and re-search from the match start. */
+	int prev_row = -1, prev_col = -1;
+
 	while (filerow < editor.numrows) {
 		char *match = case_strstr(editor.row[filerow].chars + match_col, search, fold);
 		int c;
@@ -416,9 +421,9 @@ void editor_query_replace(int fd)
 
 		editor_goto_line_direct(filerow + 1, match_col + 1);
 
-		/* Highlight the match.  Convert the chars offset to a render
-		 * offset so the highlight lands correctly even when tabs precede
-		 * the match on the line. */
+		/* Highlight the current match with HL_MATCH_CURRENT so it stands
+		 * out.  Convert the chars offset to a render offset for the hl
+		 * array (indexed by render position). */
 		RESTORE_HL;
 		{
 			erow *row = &editor.row[filerow];
@@ -430,57 +435,108 @@ void editor_query_replace(int fd)
 				saved_hl = malloc(row->rsize);
 				memcpy(saved_hl, row->hl, row->rsize);
 				if (rcol + slen <= row->rsize)
-					memset(row->hl + rcol, HL_MATCH, slen);
+					memset(row->hl + rcol, HL_MATCH_CURRENT, slen);
 			}
 		}
 
 		if (!replace_all) {
-			editor_set_status_message(
-				"Replace \"%s\" with \"%s\"? (y/n/!/q)", search, replace);
+			snprintf(prompt, sizeof(prompt),
+				 "Query replace %s with %s: ", search, replace);
+			editor_set_status_message("%s(y/n/!/.^q?)", prompt);
 			editor_refresh_screen();
 			c = editor_read_key(fd);
 		} else {
 			c = 'y';
 		}
 
-		if (c == ESC || c == CTRL_G || c == 'q')
+		if (c == ESC || c == CTRL_G || c == 'q' || c == ENTER) {
+			/* Quit.  In Emacs RET quits query-replace (it is not "yes"). */
 			break;
+		}
 		if (c == '!') {
 			replace_all = 1;
 			c = 'y';
 		}
+		if (c == '?') {
+			editor_set_status_message(
+				"y replace, n skip, ! all, . replace-quit, ^ backup, q quit");
+			editor_refresh_screen();
+			editor_read_key(fd);
+			continue;  /* re-prompt on the same match */
+		}
 
-		if (c == 'y' || c == ENTER) {
+		if (c == '^') {
+			/* Back up: jump to the previous match and re-search from
+			 * just before it, so the same match is offered again. */
+			if (prev_row >= 0) {
+				filerow = prev_row;
+				match_col = prev_col;
+			}
+			continue;
+		}
+
+		if (c == 'y' || c == ' ' || c == '.') {
 			erow *row = &editor.row[filerow];
 			char matched[KILO_QUERY_LEN + 1];
+			char rep[KILO_QUERY_LEN + 1];
 			int i;
 
-			/* Record the text actually matched, not the query: under
-			 * case folding they differ, and undo must restore what was
-			 * really there. */
 			memcpy(matched, row->chars + match_col, slen);
 			matched[slen] = '\0';
 
-			/* Undo in two steps: YANK_TEXT (popped first) deletes the
-			 * inserted replacement, then KILL_TEXT restores the original. */
+			/* Case-preserving replacement: adapt the replacement to
+			 * the capitalisation of the matched text, like Emacs.
+			 *   - all-upper -> upper-case the replacement
+			 *   - initial-cap -> capitalise the replacement
+			 *   - otherwise   -> use the replacement verbatim */
+			strcpy(rep, replace);
+			if (slen > 0) {
+				int all_upper = 1, cap = isupper((unsigned char)matched[0]);
+				for (i = 0; i < slen; i++)
+					if (!isupper((unsigned char)matched[i]))
+						all_upper = 0;
+				if (all_upper && rlen > 0) {
+					for (i = 0; i < rlen; i++)
+						rep[i] = toupper((unsigned char)rep[i]);
+				} else if (cap && rlen > 0) {
+					rep[0] = toupper((unsigned char)rep[0]);
+					for (i = 1; i < rlen; i++)
+						rep[i] = tolower((unsigned char)rep[i]);
+				}
+			}
+
 			undo_push(UNDO_KILL_TEXT, filerow, match_col, 0, matched, slen);
-			undo_push(UNDO_YANK_TEXT, filerow, match_col, 0, replace, rlen);
+			undo_push(UNDO_YANK_TEXT, filerow, match_col, 0, rep, rlen);
 
 			suppress_undo = 1;
 			for (i = 0; i < slen; i++)
 				editor_row_del_char(row, match_col);
 			for (i = 0; i < rlen; i++)
-				editor_row_insert_char(row, match_col + i, (unsigned char)replace[i]);
+				editor_row_insert_char(row, match_col + i, (unsigned char)rep[i]);
 			suppress_undo = 0;
+
+			prev_row = filerow;
+			prev_col = match_col;
 
 			match_col += rlen;
 			count++;
+
+			if (c == '.') {
+				/* Replace this one and exit. */
+				break;
+			}
 		} else {
+			/* n, DEL, BACKSPACE, or anything else: skip this match. */
 			match_col++;
 		}
 	}
 
 	RESTORE_HL;
-	editor_set_status_message(count ? "Replaced %d occurrence%s." : "No replacements made.",
-				  count, count == 1 ? "" : "s");
+	if (replace_all && count > 0)
+		editor_set_status_message("Replaced %d occurrence%s.", count,
+					  count == 1 ? "" : "s");
+	else
+		editor_set_status_message(count ? "Replaced %d occurrence%s."
+						: "No replacements made.",
+					  count, count == 1 ? "" : "s");
 }
