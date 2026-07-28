@@ -338,7 +338,8 @@ enum undo_type {
 	UNDO_KILL_TEXT,   /* Kill line or region */
 	UNDO_YANK_TEXT,   /* Yank (paste) */
 	UNDO_REFLOW_PARA, /* M-q paragraph reflow */
-	UNDO_RECT_OVERWRITE  /* Rectangle kill/delete/clear/yank: restore rows */
+	UNDO_RECT_OVERWRITE, /* Rectangle kill/delete/clear/yank: restore rows */
+	UNDO_BOUNDARY     /* Marker: undo stops here, grouping prior ops */
 };
 
 /* Single undo operation */
@@ -694,6 +695,7 @@ void editor_yank(void);
 void undo_init(void);
 void undo_free(void);
 void undo_push(enum undo_type type, int row, int col, int c, char *text, int len);
+void undo_push_boundary(void);
 void editor_undo(void);
 void undo_mark_clean(void);
 

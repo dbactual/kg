@@ -1,11 +1,55 @@
 /* undo.c - Simple undo/redo functionality */
 
 #include "def.h"
+#include <time.h>
 
 #define MAX_UNDO_SIZE 1000
 
 /* Global undo stack */
 struct undo_stack undostack = {NULL, 0, MAX_UNDO_SIZE, -1};
+
+/* Timestamp of the last real (non-boundary) op pushed, for time-based
+ * grouping.  0 means "no prior op". */
+static time_t undo_last_time = 0;
+/* The type-class of the last real op, for type-change boundaries. */
+static int undo_last_class = -1;  /* 0=insert-char, 1=delete-char, 2=other */
+
+/* Classify an op into a grouping class.  Consecutive ops of the same
+ * class within the time threshold are collapsed into one undo step.
+ *   UNDO_INSERT_CHAR -> 0 (insert)
+ *   UNDO_DELETE_CHAR -> 1 (delete)
+ *   everything else  -> 2 (compound: always its own group)
+ */
+static int undo_class(enum undo_type type)
+{
+	switch (type) {
+	case UNDO_INSERT_CHAR: return 0;
+	case UNDO_DELETE_CHAR: return 1;
+	default:               return 2;
+	}
+}
+
+/* Push an explicit undo boundary.  Compound ops (kill, yank, reflow,
+ * rectangle) call this before pushing their record so they always form
+ * their own undo step, separate from any surrounding char-level edits. */
+void undo_push_boundary(void)
+{
+	struct undo_op *op;
+
+	if (suppress_undo) return;
+	/* Don't push two boundaries in a row. */
+	if (undostack.head && undostack.head->type == UNDO_BOUNDARY) return;
+
+	op = malloc(sizeof(struct undo_op));
+	if (!op) return;
+	op->type = UNDO_BOUNDARY;
+	op->row = op->col = op->c = 0;
+	op->text = NULL;
+	op->len = 0;
+	op->next = undostack.head;
+	undostack.head = op;
+	undostack.size++;
+}
 
 /* Initialize the undo stack */
 void undo_init(void)
@@ -14,6 +58,8 @@ void undo_init(void)
 	undostack.size = 0;
 	undostack.max_size = MAX_UNDO_SIZE;
 	undostack.clean_size = -1;  /* -1 means never saved clean */
+	undo_last_time = 0;
+	undo_last_class = -1;
 }
 
 /* Free the entire undo stack */
@@ -29,15 +75,42 @@ void undo_free(void)
 	}
 	undostack.head = NULL;
 	undostack.size = 0;
+	undo_last_time = 0;
+	undo_last_class = -1;
 }
 
-/* Push an undo operation onto the stack */
+/* Push an undo operation onto the stack.  Automatically inserts an
+ * undo boundary before the op when the grouping class changes (insert
+ * vs delete vs compound) or when more than UNDO_GROUP_SECS seconds have
+ * elapsed since the last op -- mirroring Emacs' undo grouping. */
+#define UNDO_GROUP_SECS 5
+
 void undo_push(enum undo_type type, int row, int col, int c, char *text, int len)
 {
 	struct undo_op *op;
 
 	/* Skip if undo recording is suppressed */
 	if (suppress_undo) return;
+
+	/* Auto-boundary: compound ops always start a new group; char ops
+	 * start a new group when the class changes or time has elapsed. */
+	{
+		int cls = undo_class(type);
+		time_t now = time(NULL);
+
+		if (cls == 2) {
+			/* Compound op: always boundary before. */
+			undo_push_boundary();
+		} else if (undo_last_class >= 0 && undo_last_class != cls) {
+			/* Type changed (insert <-> delete): boundary. */
+			undo_push_boundary();
+		} else if (undo_last_time > 0 && now - undo_last_time > UNDO_GROUP_SECS) {
+			/* Time gap: boundary. */
+			undo_push_boundary();
+		}
+		undo_last_class = cls;
+		undo_last_time = now;
+	}
 
 	/* Create new undo operation */
 	op = malloc(sizeof(struct undo_op));
@@ -105,15 +178,35 @@ void editor_undo(void)
 		return;
 	}
 
-	op = undostack.head;
-	undostack.head = op->next;
-	undostack.size--;
+	/* If the top of the stack is a boundary (e.g. left over from a
+	 * compound op), pop it first -- it doesn't represent work to undo. */
+	if (undostack.head->type == UNDO_BOUNDARY) {
+		op = undostack.head;
+		undostack.head = op->next;
+		undostack.size--;
+		free(op);
+		if (!undostack.head) {
+			editor_set_status_message("Nothing to undo");
+			return;
+		}
+	}
+
+	/* Pop and apply ops until we hit a boundary (or empty stack).
+	 * One C-_ undoes one whole group. */
+	do {
+		op = undostack.head;
+		undostack.head = op->next;
+		undostack.size--;
 
 	/* Position cursor at operation location */
 	editor_cursor_goto(op->row, op->col);
 
 	/* Perform the reverse operation */
 	switch (op->type) {
+	case UNDO_BOUNDARY:
+		/* Should not be reached: boundaries are popped before the
+		 * apply loop and at its end, never applied. */
+		break;
 	case UNDO_INSERT_CHAR:
 		/* Reverse: delete the character */
 		if (op->row < editor.numrows) {
@@ -280,13 +373,24 @@ void editor_undo(void)
 	}
 	}
 
-	/* Check if we've undone back to the saved state */
-	if (undostack.size == undostack.clean_size)
-		editor.dirty = 0;
-
 	/* Free the operation */
 	if (op->text) free(op->text);
 	free(op);
+
+	/* Continue popping until we hit a boundary or empty stack. */
+	op = undostack.head;
+	} while (op && op->type != UNDO_BOUNDARY);
+
+	/* If we stopped at a boundary, pop it too (it's consumed). */
+	if (op && op->type == UNDO_BOUNDARY) {
+		undostack.head = op->next;
+		undostack.size--;
+		free(op);
+	}
+
+	/* Check if we've undone back to the saved state */
+	if (undostack.size == undostack.clean_size)
+		editor.dirty = 0;
 
 	editor_set_status_message("Undo");
 }
