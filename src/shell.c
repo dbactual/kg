@@ -185,6 +185,40 @@ static void insert_as_yank(const char *text, int len)
 	editor_insert_text_raw(text, len);
 }
 
+/* Copy text to the system clipboard by piping it to the platform's
+ * clipboard helper.  Best-effort: if no known helper is on PATH, silently
+ * do nothing (the kill ring still has the text).  Called by M-w (copy) and
+ * the kill commands so cuts/copies reach the OS clipboard, like Emacs'
+ * interprogram-cut-function. */
+void copy_to_clipboard(const char *text, int len)
+{
+	const char *cmd = NULL;
+	char *out;
+	int out_len = 0;
+
+	if (!text || len <= 0) return;
+	/* Pick the first available clipboard helper.  pbcopy = macOS,
+	 * wl-copy = Wayland, xsel/xclip = X11 (in that order so Wayland
+	 * wins when both are present).  Check via access() rather than
+	 * running `which` so this stays fast and side-effect-free. */
+	if      (access("/usr/bin/pbcopy",        X_OK) == 0) cmd = "pbcopy";
+	else if (access("/usr/bin/wl-copy",       X_OK) == 0) cmd = "wl-copy";
+	else if (access("/usr/bin/xsel",          X_OK) == 0) cmd = "xsel --clipboard --input";
+	else if (access("/usr/bin/xclip",         X_OK) == 0) cmd = "xclip -selection clipboard";
+	else if (access("/usr/local/bin/pbcopy",  X_OK) == 0) cmd = "pbcopy";
+	else if (access("/usr/local/bin/wl-copy", X_OK) == 0) cmd = "wl-copy";
+	else if (access("/usr/local/bin/xsel",    X_OK) == 0) cmd = "xsel --clipboard --input";
+	else if (access("/usr/local/bin/xclip",   X_OK) == 0) cmd = "xclip -selection clipboard";
+	else if (access("/opt/homebrew/bin/pbcopy",  X_OK) == 0) cmd = "pbcopy";
+	else if (access("/opt/homebrew/bin/wl-copy", X_OK) == 0) cmd = "wl-copy";
+	else if (access("/opt/homebrew/bin/xsel",    X_OK) == 0) cmd = "xsel --clipboard --input";
+	else if (access("/opt/homebrew/bin/xclip",   X_OK) == 0) cmd = "xclip -selection clipboard";
+	else return;
+
+	out = shell_run(cmd, text, len, &out_len);
+	free(out);
+}
+
 /* M-! shell-command: prompt, run, insert stdout at point. */
 void editor_shell_command(int fd)
 {

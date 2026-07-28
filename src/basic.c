@@ -117,7 +117,19 @@ void editor_move_cursor(int key)
 		}
 		break;
 	case ARROW_UP:
-		if (editor.cy == 0) {
+		/* In the buffer list, pressing up at the first file row
+		 * wraps to the last file row, rather than moving up into
+		 * the header rows. */
+		if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
+		    filerow == IBUF_HEADER_ROWS) {
+			if (editor.numrows <= editor.screenrows) {
+				editor.rowoff = 0;
+				editor.cy = editor.numrows - 1;
+			} else {
+				editor.rowoff = editor.numrows - editor.screenrows;
+				editor.cy = editor.screenrows - 1;
+			}
+		} else if (editor.cy == 0) {
 			if (editor.rowoff) editor.rowoff--;
 		} else {
 			editor.cy -= 1;
@@ -130,6 +142,12 @@ void editor_move_cursor(int key)
 			} else {
 				editor.cy += 1;
 			}
+		} else if (editor.syntax && (editor.syntax->flags & SHL_IBUFFER) &&
+		           editor.numrows > IBUF_HEADER_ROWS) {
+			/* Wrap to the first file row of the buffer list
+			 * (skip the two header rows). */
+			editor.rowoff = 0;
+			editor.cy = IBUF_HEADER_ROWS;
 		}
 		break;
 	}

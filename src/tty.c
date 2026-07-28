@@ -13,6 +13,8 @@ void disable_raw_mode(int fd)
 #endif
 	/* Don't even check the return value as it's too late. */
 	if (editor.rawmode) {
+		/* Disable mouse reporting before leaving the alternate screen. */
+		tty_write("\x1b[?1000l\x1b[?1006l", 16);
 		/* Back to the normal screen; restores the shell's scrollback. */
 		tty_write("\x1b[?1049l", 8);
 		tcsetattr(fd, TCSAFLUSH, &orig_termios);
@@ -74,11 +76,93 @@ int enable_raw_mode(int fd)
 	 * terminals (gnome-terminal, ...) forward shift-modified arrow
 	 * keys to the editor instead of scrolling the scrollback. */
 	tty_write("\x1b[?1049h", 8);
+	/* Enable mouse reporting: ?1000 for button presses + wheel, ?1006
+	 * for the SGR encoding (\x1b[<button;col;rowM/m) which is decimal,
+	 * unambiguous with UTF-8, and supported by xterm/Alacritty/iTerm/
+	 * kitty/wezterm/tmux>=2.5. */
+	tty_write("\x1b[?1000h\x1b[?1006h", 16);
 	return 0;
 
 fatal:
 	errno = ENOTTY;
 	return -1;
+}
+
+/* Query the terminal's background colour via OSC 11 and decide whether it
+ * is "dark" (low luminance).  Must be called after enable_raw_mode() so the
+ * reply can be read with the raw VMIN=0/VTIME=1 read timeout.  Returns:
+ *    1 = dark background, 0 = light background, -1 = no reply / unparseable.
+ *
+ * Sends "\x1b]11;?\x07" (query background).  A replying terminal responds
+ * with "\x1b]11;rgb:RRRR/GGGG/BBBB\x07" (16-bit-per-channel, the common
+ * xterm/Alacritty form) or "rgb:RR/GG/BB" (8-bit shorthand) or
+ * "rgb:R/G/B" (4-bit).  Some terminals answer with "#RRGGBB".  We parse the
+ * first three hex components after "rgb:" (or after '#'), normalise each to
+ * 0-255, and compute luminance Y = 0.299r + 0.587g + 0.114b.  Y < 0.5
+ * counts as dark.  The read loop gives up after ~200ms total so a silent
+ * terminal (or one that doesn't know OSC 11) doesn't stall startup. */
+int tty_query_background(int fd)
+{
+	char buf[64];
+	int len = 0;
+	struct timeval start, now;
+	int r, g, b, got, i;
+
+	tty_write("\x1b]11;?\x07", 8);
+
+	gettimeofday(&start, NULL);
+	while (len < (int)sizeof(buf) - 1) {
+		ssize_t n = read(fd, buf + len, (int)sizeof(buf) - 1 - len);
+		if (n > 0) {
+			len += n;
+			/* Stop as soon as we see the ST terminator (BEL \x07 or
+			 * ESC \).  Anything after it is a keypress we must not
+			 * consume — leave it for the editor's key loop. */
+			if (memchr(buf, '\x07', len) ||
+			    (len >= 2 && buf[len-2] == 0x1b && buf[len-1] == '\\'))
+				break;
+			continue;
+		}
+		gettimeofday(&now, NULL);
+		if ((now.tv_sec - start.tv_sec) * 1000 +
+		    (now.tv_usec - start.tv_usec) / 1000 > 200)
+			break;
+	}
+	buf[len] = '\0';
+
+	/* Expected: "\x1b]11;rgb:RRRR/GGGG/BBBB\x07" or "#RRGGBB\x07". */
+	r = g = b = -1;
+	{
+		const char *p = strstr(buf, "rgb:");
+		if (p) {
+			p += 4;
+			r = (int)strtol(p, (char **)&p, 16);
+			if (*p == '/' || *p == ':') p++;
+			g = (int)strtol(p, (char **)&p, 16);
+			if (*p == '/' || *p == ':') p++;
+			b = (int)strtol(p, (char **)&p, 16);
+		} else {
+			const char *h = memchr(buf, '#', len);
+			if (h) {
+				r = (int)strtol(h + 1, (char **)&p, 16);
+				if (*p) p++;
+				g = (int)strtol(p, (char **)&p, 16);
+				if (*p) p++;
+				b = (int)strtol(p, (char **)&p, 16);
+			}
+		}
+	}
+	if (r < 0 || g < 0 || b < 0) return -1;
+
+	/* Normalise to 8-bit regardless of source precision.  xterm-style
+	 * 16-bit replies are multiples of 0x101; 4-bit are *0x11; etc.  The
+	 * ">> 8" + clamp handles 16-bit; for 8-bit/4-bit it's a no-op-ish. */
+#define NORM(v) ((v) > 255 ? (((v) >> 8) > 255 ? 255 : ((v) >> 8)) : (v))
+	r = NORM(r); g = NORM(g); b = NORM(b);
+#undef NORM
+	(void)i; (void)got;
+	/* Relative luminance (Rec.601, good enough for "dark vs light"). */
+	return (0.299 * r + 0.587 * g + 0.114 * b) < 128 ? 1 : 0;
 }
 
 /* Decode an escape sequence (ESC byte already consumed) into a key code. */
@@ -118,12 +202,39 @@ static int parse_escape(int fd)
 	if (seq[0] == 'z') return ALT_Z;
 	if (seq[0] == '\\') return ALT_BACKSLASH;
 	if (seq[0] == ' ') return ALT_SPACE;
+	if (seq[0] == '.') return ALT_PERIOD;
+	if (seq[0] == ',') return ALT_COMMA;
 	if (seq[0] >= '0' && seq[0] <= '9') return ALT_0 + (seq[0] - '0');
 
 	if (read(fd, seq+1, 1) == 0) return ESC;
 
 	/* ESC [ sequences */
 	if (seq[0] == '[') {
+		/* SGR mouse: ESC [ < button ; col ; row M (press) / m (release).
+		 * Read the decimal triple and return a MOUSE_* code; set the
+		 * mouse_col/mouse_row globals (1-based) for the kbd handler. */
+		if (seq[1] == '<') {
+			int button = 0, col = 0, row = 0, stage = 0, c;
+			while (read(fd, (char *)&c, 1) == 1) {
+				if (c == 'M' || c == 'm') {
+					mouse_col = col;
+					mouse_row = row;
+					if (button == 64)      return MOUSE_WHEEL_UP;
+					if (button == 65)      return MOUSE_WHEEL_DOWN;
+					if (c == 'M' && button == 0) return MOUSE_CLICK;
+					/* release / other buttons: ignore, consume the event */
+					return ESC;
+				}
+				if (c == ';') { stage++; continue; }
+				if (c >= '0' && c <= '9') {
+					int v = c - '0';
+					if      (stage == 0) button = button*10 + v;
+					else if (stage == 1) col    = col*10 + v;
+					else if (stage == 2) row    = row*10 + v;
+				}
+			}
+			return ESC;
+		}
 		if (seq[1] >= '0' && seq[1] <= '9') {
 			if (read(fd, seq+2, 1) == 0) return ESC;
 			if (seq[2] == '~') {

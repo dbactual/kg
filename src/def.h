@@ -71,6 +71,10 @@ static inline void tty_write(const void *buf, size_t n)
 	(void)r;
 }
 
+/* Query the terminal background colour (OSC 11) and report dark/light.
+ * Must be called after raw mode is enabled.  1=dark, 0=light, -1=unknown. */
+int tty_query_background(int fd);
+
 /* Syntax highlight types */
 #define HL_NORMAL 0
 #define HL_NONPRINT 1
@@ -80,12 +84,21 @@ static inline void tty_write(const void *buf, size_t n)
 #define HL_KEYWORD2 5
 #define HL_STRING 6
 #define HL_NUMBER 7
-#define HL_MATCH 8      /* Search match. */
+#define HL_MATCH 8      /* Search match (other occurrences). */
+#define HL_MATCH_CURRENT 9 /* The active isearch match. */
 
 #define HL_HIGHLIGHT_STRINGS (1<<0)
 #define HL_HIGHLIGHT_NUMBERS (1<<1)
 #define SHL_MARKDOWN         (1<<2) /* Use markdown-specific highlighter. */
 #define SHL_MAKEFILE         (1<<3) /* Use makefile-specific highlighter. */
+#define SHL_IBUFFER          (1<<4) /* *Buffer List* select-on-Enter mode. */
+#define IBUF_HEADER_ROWS     2      /* header rows before the first file row */
+#define SHL_DIFF             (1<<5) /* unified-diff highlighter (vc-mode). */
+#define SHL_GITSTATUS        (1<<6) /* git status --porcelain highlighter.  */
+#define SHL_GITLOG           (1<<7) /* git log highlighter (vc-mode).       */
+#define SHL_VCDIR            (1<<8) /* VC-dir summary/file-list highlighter.*/
+#define SHL_GREP             (1<<9) /* *grep* file:line highlighter.        */
+#define SHL_XREF             (1<<10)/* *xref* definition-match highlighter.*/
 
 /* Key action codes */
 enum KEY_ACTION {
@@ -189,6 +202,8 @@ enum KEY_ACTION {
 	ALT_Z,         /* M-z zap-to-char */
 	ALT_BACKSLASH, /* M-\ delete-horizontal-space */
 	ALT_SPACE,     /* M-SPC just-one-space */
+	ALT_PERIOD,    /* M-. xref-find-definitions */
+	ALT_COMMA,     /* M-, xref-pop-mark-ring */
 	ALT_0,         /* M-0..M-9 numeric prefix -- keep contiguous */
 	ALT_1,
 	ALT_2,
@@ -205,7 +220,12 @@ enum KEY_ACTION {
 	KEY_F2,        /* F2: save buffer */
 	KEY_F3,        /* F3: start keyboard macro */
 	KEY_F4,        /* F4: stop or replay keyboard macro */
-	KEY_F10        /* F10: quit */
+	KEY_F10,       /* F10: quit */
+	/* Mouse events (SGR/1006 encoding). The screen coordinates of the
+	 * last mouse event are in mouse_col / mouse_row (1-based). */
+	MOUSE_CLICK,
+	MOUSE_WHEEL_UP,
+	MOUSE_WHEEL_DOWN
 };
 
 /* Syntax highlight definition */
@@ -265,6 +285,7 @@ struct editor_config {
 	                      * where the cursor should rest (for minibuffer prompts). */
 	struct editor_syntax *syntax;    /* Current syntax highlight, or NULL. */
 	int cx_prefix;      /* Set to 1 when C-x was pressed, waiting for next key. */
+	int cc_prefix;      /* Set to 1 when C-c was pressed, waiting for next key. */
 	int prefix_pending; /* Set while accumulating a C-u numeric argument. */
 	int prefix_arg;     /* The numeric argument under construction. */
 	int prefix_no_digits; /* 1 between C-u and the first digit, so a digit replaces 4. */
@@ -277,6 +298,7 @@ struct editor_config {
 	int shift_select;   /* 1 when the active region was started by shift+motion. */
 	int rect_mode;      /* 1 when the region should render as a rectangle. */
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
+	int proj_prefix;    /* 1 after C-x p, waiting for the project op key. */
 	int desired_visual_col; /* goal column across vertical motion; -1 = unset. */
 	int readonly;       /* If 1, buffer is read-only (editing is blocked). */
 	int last_key;       /* Last key processed, for command repetition logic. */
@@ -375,6 +397,8 @@ struct editor_buffer {
 
 /* Global editor state */
 extern struct editor_config editor;
+extern int kg_bg_dark;      /* OSC 11 startup probe: 1=dark, 0=light, -1=unknown */
+extern int mouse_col, mouse_row;  /* last mouse event, 1-based screen coords */
 extern int running;
 extern int suppress_undo;
 extern struct kill_ring killring;
@@ -426,7 +450,45 @@ int buf_save_all(int fd);
 void buf_open_list(void);
 void buf_open_help(void);
 void buf_ibuffer_select(void);
+int  buf_find_by_filename(const char *fn);
+int  buf_open_path(const char *path, int readonly);
+void buf_open_special(const char *name, struct editor_syntax *syn,
+                      void (*populate)(void), const char *status);
+void vc_open_status(void);
+void vc_open_diff(void);
+void vc_open_log(void);
+void vc_open_dir(void);
+void vc_status_select(void);
+void vc_diff_select(void);
+void vc_log_select(void);
+void vc_dir_select(void);
+void vc_dir_diff(void);
+void vc_filediff_close(int fd);
+void grep_open(int fd);
+void grep_select(void);
+int  editor_word_at_point(char *out, int outsize);
+void dabbrev_reset(void);
+int  dabbrev_expand(void);
+void editor_indent_rigidly(int n);
+void project_grep(int fd);
+void project_find_file(int fd);
+void project_select(void);
+
+/* Find the project root above the current file: the nearest ancestor
+ * directory containing a project marker (.git, Makefile, package.json,
+ * Cargo.toml, .hg, .svn, TAGS).  Writes the path to rootbuf and returns 1,
+ * or returns 0 (rootbuf untouched) if no marker is found.  Shared by xref
+ * and the project commands (C-x p). */
+int editor_find_project_root(char *rootbuf, int rootsize);
+int editor_is_cruft_file(const char *name);   /* backup/swap/conflict files to skip */
+const char *editor_build_grep_cmd(char *out, int outsize, const char *pattern,
+                                  const char *path);
+#define GREP_NAME "*grep*"   /* *grep* buffer name, shared by vc.c and project.c */
+void xref_find_definitions(void);
+void xref_select(void);
+void xref_pop_mark_ring(void);
 void buf_display_name(int idx, char *out, size_t outsize);
+void buf_display_full_name(int idx, char *out, size_t outsize);
 
 /* winmgr.c */
 void win_init(void);
@@ -443,6 +505,8 @@ void win_enlarge_h(int n);
 void win_balance(void);
 void win_delete_current(void);
 void win_delete_others(void);
+void editor_mouse_click(int col, int row);
+void editor_mouse_wheel(int dir);
 
 /* autocomplete.c */
 int editor_find_close_char(int open_char);
@@ -462,6 +526,7 @@ void editor_snap_cx_to_row(void);
 int  editor_visual_col(erow *row, int chars_col);
 int  editor_chars_col_at_visual(erow *row, int target_vcol);
 int  chars_to_render_col(erow *row, int chars_col);
+int  render_col_to_chars(erow *row, int render_col);
 
 /* buffer.c */
 void editor_update_row(erow *row);
@@ -546,13 +611,15 @@ void editor_query_replace(int fd);
 void editor_shell_command(int fd);
 void editor_shell_command_on_region(int fd);
 char *shell_run(const char *cmd, const char *in, int inlen, int *out_len);
+void copy_to_clipboard(const char *text, int len);
 
 /* syntax.c */
 int is_separator(int c);
 int editor_row_has_open_comment(erow *row);
 void editor_update_syntax(erow *row);
-int editor_syntax_to_color(int hl);
+const char *editor_syntax_to_color(int hl);
 void editor_select_syntax_highlight(char *filename);
+int  syntax_path_matches_lang(const char *path, const char *lang);
 
 /* tty.c */
 void disable_raw_mode(int fd);

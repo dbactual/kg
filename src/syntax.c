@@ -20,6 +20,7 @@
  * There is no support to highlight patterns currently. */
 
 #include "def.h"
+#include <stdlib.h>
 
 /* C / C++ */
 char *C_HL_extensions[] = {".c",".h",".cpp",".hpp",".cc",NULL};
@@ -69,6 +70,7 @@ char *SHELL_HL_extensions[] = {
 	".sh", ".bash", ".zsh", ".ksh", ".csh", ".tcsh",
 	".profile", ".bashrc", ".bash_profile", ".bash_login",
 	".zshrc", ".zshenv", ".zlogin", ".zprofile",
+	".env", ".env.local", ".env.production", ".env.development",
 	NULL};
 
 char *SHELL_HL_keywords[] = {
@@ -141,6 +143,26 @@ char *RUST_HL_keywords[] = {
 	"Rc|", "Arc|", "RefCell|", "Cell|", "Mutex|", "RwLock|", "thread|", "Clone|",
 	"Copy|", "Send|", "Sync|", "Drop|", "Display|", "Debug|", "Default|", "PartialEq|",
 	"Eq|", "PartialOrd|", "Ord|", "Hash|", "Iterator|", "IntoIterator|", NULL};
+
+/* Go */
+char *GO_HL_extensions[] = {".go", NULL};
+char *GO_HL_keywords[] = {
+	/* Go Keywords */
+	"break", "case", "chan", "const", "continue", "default", "defer", "else",
+	"fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
+	"map", "package", "range", "return", "select", "struct", "switch", "type",
+	"var",
+
+	/* Go built-in types & functions (trailing | = HL_KEYWORD2) */
+	"bool|", "byte|", "complex64|", "complex128|", "float32|", "float64|",
+	"int|", "int8|", "int16|", "int32|", "int64|", "rune|", "string|",
+	"uint|", "uint8|", "uint16|", "uint32|", "uint64|", "uintptr|",
+	"error|", "any|",
+	"append|", "cap|", "close|", "complex|", "copy|", "delete|", "imag|",
+	"len|", "make|", "new|", "panic|", "print|", "println|", "real|",
+	"recover|", "min|", "max|", "clear|",
+	"true", "false", "nil", "iota",
+	NULL};
 
 /* Java */
 char *JAVA_HL_extensions[] = {".java", ".class", NULL};
@@ -534,6 +556,7 @@ struct editor_syntax HLDB[] = {
 	{ "Shell",      SHELL_HL_extensions,   SHELL_HL_keywords,   "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "JavaScript", JS_HL_extensions,      JS_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Rust",       RUST_HL_extensions,    RUST_HL_keywords,    "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
+	{ "Go",         GO_HL_extensions,      GO_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Java",       JAVA_HL_extensions,    JAVA_HL_keywords,    "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "TypeScript", TS_HL_extensions,      TS_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "C#",         CSHARP_HL_extensions,  CSHARP_HL_keywords,  "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
@@ -791,6 +814,133 @@ static void makefile_syntax(erow *row)
 	make_var_and_comment(row, i);
 }
 
+/* Unified-diff highlighter (vc-mode *git-diff* buffer).
+ *   "diff ..." / "index ..." / "--- " / "+++ "  → magenta (file header)
+ *   "@@ -a,b +c,d @@"                            → cyan   (hunk header)
+ *   "+" ...                                      → green  (added)
+ *   "-" ...                                      → red    (removed)
+ *   anything else (context, "\ No newline")      → normal
+ */
+static void diff_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+
+	if (len <= 0) return;
+
+	if (!strncmp(p, "diff ", 5) || !strncmp(p, "index ", 6) ||
+	    !strncmp(p, "--- ", 4)  || !strncmp(p, "+++ ", 4)) {
+		memset(row->hl, HL_STRING, len);
+		return;
+	}
+	if (!strncmp(p, "@@", 2)) {
+		memset(row->hl, HL_COMMENT, len);
+		return;
+	}
+	if (p[0] == '+') { memset(row->hl, HL_KEYWORD2, len); return; }
+	if (p[0] == '-') { memset(row->hl, HL_NUMBER,   len); return; }
+	/* leave HL_NORMAL */
+}
+
+/* `git status --porcelain=v1 -b` highlighter (vc-mode *git-status* buffer).
+ *   "## branch..."      → cyan (whole line, the branch header)
+ *   "XY path"           → color the 2-char status code, leave path normal:
+ *        ?? → red, A → green, D → red, M → yellow, R → magenta, else cyan.
+ */
+static void gitstatus_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	char x, y;
+
+	if (len <= 0) return;
+	if (!strncmp(p, "## ", 3)) { memset(row->hl, HL_COMMENT, len); return; }
+	/* Graph-log lines (from the recent-log section vc-dir appends):
+	 *   "* <hash> <date> <subject> <author> (refs)"
+	 * Tint the leading graph column + the hash cyan, and any trailing
+	 * "(refs)" magenta.  Distinguished from porcelain "XY path" lines
+	 * by starting with a graph char (* | / \) rather than a status code. */
+	if (p[0] == '*' || p[0] == '|' || p[0] == '/' || p[0] == '\\' ||
+	    (p[0] == ' ' && len > 1 && (p[1] == '*' || p[1] == '|' ||
+	                                p[1] == '/' || p[1] == '\\'))) {
+		int g = (p[0] == ' ') ? 1 : 0;   /* leading-space graph indent */
+		int h0 = g + 2;                  /* hash starts after "* " */
+		/* tint the graph column(s) + "* " prefix + hash */
+		if (h0 < len) {
+			int hlen = 0;
+			while (h0 + hlen < len && p[h0+hlen] != ' ') hlen++;
+			memset(row->hl, HL_COMMENT, h0 + hlen);  /* cyan */
+			/* trailing "(refs)" in magenta */
+			{
+				int i;
+				for (i = len - 1; i >= 0; i--)
+					if (p[i] == '(') break;
+				if (i >= 0 && i < len && p[len-1] == ')')
+					memset(row->hl + i, HL_STRING, len - i);
+			}
+		}
+		return;
+	}
+	if (len < 2) return;
+
+	x = p[0]; y = p[1];
+	if (x == '?' && y == '?') { row->hl[0] = HL_NUMBER;   row->hl[1] = HL_NUMBER;   return; }
+	if (x == 'A' || y == 'A') { row->hl[0] = HL_KEYWORD2; row->hl[1] = HL_KEYWORD2; return; }
+	if (x == 'D' || y == 'D') { row->hl[0] = HL_NUMBER;   row->hl[1] = HL_NUMBER;   return; }
+	if (x == 'M' || y == 'M') { row->hl[0] = HL_KEYWORD1; row->hl[1] = HL_KEYWORD1; return; }
+	if (x == 'R' || y == 'R') { row->hl[0] = HL_STRING;   row->hl[1] = HL_STRING;   return; }
+	row->hl[0] = HL_COMMENT; row->hl[1] = HL_COMMENT;
+}
+
+/* `git log` highlighter (vc-mode *git-log* buffer).
+ *   "commit <hex>"        → magenta (whole line, the commit header)
+ *   "Author:" / "Date:"   → cyan    (whole line)
+ *   "Merge: <hashes>"     → cyan    (whole line)
+ *   everything else (the
+ *    indented message and
+ *    a --stat tail)       → normal
+ */
+static void gitlog_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+
+	if (len <= 0) return;
+	if (!strncmp(p, "commit ", 7)) { memset(row->hl, HL_STRING, len); return; }
+	if (!strncmp(p, "Author:", 7)) { memset(row->hl, HL_COMMENT, len); return; }
+	if (!strncmp(p, "Date:",   5)) { memset(row->hl, HL_COMMENT, len); return; }
+	if (!strncmp(p, "Merge:",  6)) { memset(row->hl, HL_COMMENT, len); return; }
+	/* leave HL_NORMAL */
+}
+
+/* `grep -nH` highlighter (vc-mode *grep* buffer).  Each match line is
+ * "file:line:text".  Colour the file part cyan and the line number red
+ * (including the two colons), leaving the matched text normal so the
+ * search hit stands out.  Lines that don't match that shape (grep's own
+ * headers, "Binary file ... matches", blank lines) stay normal. */
+static void grep_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	int i, colon1, colon2;
+
+	if (len <= 0) return;
+	/* first colon = end of filename */
+	colon1 = -1;
+	for (i = 0; i < len; i++) if (p[i] == ':') { colon1 = i; break; }
+	if (colon1 <= 0) return;            /* no filename */
+	/* second colon = end of line number; the bytes between must be digits */
+	colon2 = -1;
+	for (i = colon1 + 1; i < len; i++) if (p[i] == ':') { colon2 = i; break; }
+	if (colon2 < 0) return;
+	for (i = colon1 + 1; i < colon2; i++)
+		if (!isdigit((unsigned char)p[i])) return;
+
+	memset(row->hl,           HL_COMMENT, colon1);         /* file  (cyan) */
+	memset(row->hl + colon1,  HL_NUMBER,  colon2 - colon1 + 1); /* :line: (red) */
+	/* text after colon2: HL_NORMAL */
+}
+
 /* Set every byte of row->hl (that corresponds to every character in the line)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
@@ -816,6 +966,34 @@ void editor_update_syntax(erow *row)
 
 	if (editor.syntax->flags & SHL_MAKEFILE) {
 		makefile_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_DIFF) {
+		diff_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GITSTATUS) {
+		gitstatus_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GITLOG) {
+		gitlog_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_VCDIR) {
+		/* *vc-dir* shows `git status --short` output, so it highlights
+		 * the same way as *git-status*: the XY code tinted by change
+		 * kind, the path left normal. */
+		gitstatus_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_GREP) {
+		grep_syntax(row);
 		return;
 	}
 
@@ -983,19 +1161,168 @@ void editor_update_syntax(erow *row)
 	row->hl_oc = oc;
 }
 
-/* Maps syntax highlight token types to terminal colors. */
-int editor_syntax_to_color(int hl)
+/* Emacs default font-lock colors, as exact RGB.
+ *
+ * Emacs ships two palettes in font-lock.el, selected by frame background:
+ *   (background light)  — Firebrick comments, Purple keywords, Blue
+ *                         function names, ForestGreen types, RosyBrown
+ *                         strings, DarkCyan constants
+ *   (background dark)   — chocolate1 comments, Cyan1 keywords, LightSkyBlue
+ *                         function names, PaleGreen types, LightSalmon
+ *                         strings, Aquamarine constants
+ *
+ * These hues have no match in the 8/16-colour ANSI set, and the 216-colour
+ * 256-palette cube is too coarse (its primaries are saturated and garish),
+ * so editor_syntax_to_color returns full 24-bit true-colour SGR
+ * ("\x1b[38;2;R;G;Bm") when the terminal advertises truecolor, and falls
+ * back to the nearest 256-cube index ("\x1b[38;5;Nm") otherwise.
+ *
+ * kg's token set is coarser than Emacs's faces, so the mapping is:
+ *   HL_COMMENT/MLCOMMENT  font-lock-comment-face
+ *   HL_KEYWORD1           font-lock-keyword-face        (Purple / Cyan1)
+ *   HL_KEYWORD2           font-lock-type-face           (ForestGreen / PaleGreen)
+ *   HL_STRING             font-lock-string-face         (RosyBrown / LightSalmon)
+ *   HL_NUMBER             (Emacs has no number face)    — default-ish
+ *   HL_MATCH              isearch face — magenta/pink background, white fg
+ *
+ * Background pick (cached once):
+ *   - $KG_BG=dark|light forces it
+ *   - else $COLORFGBG "fg;bg" with bg >= 8 means dark
+ *   - else light
+ *
+ * Truecolor detection (cached once):
+ *   - $COLORTERM contains "truecolor" or "24bit"
+ *   - $TERM contains "truecolor", "24bit", "kitty", "alacritty", "wezterm"
+ *   - else assume no truecolor and use nearest 256-cube fallback
+ */
+static int vc_dark_background(void)
 {
-	switch (hl) {
-	case HL_COMMENT:
-	case HL_MLCOMMENT: return 36;   /* cyan */
-	case HL_KEYWORD1:  return 33;   /* yellow */
-	case HL_KEYWORD2:  return 32;   /* green */
-	case HL_STRING:    return 35;   /* magenta */
-	case HL_NUMBER:    return 31;   /* red */
-	case HL_MATCH:     return 34;   /* blue */
-	default:           return 37;   /* white */
+	const char *bg, *p;
+
+	bg = getenv("KG_BG");
+	if (bg) {
+		if (bg[0] == 'd' || bg[0] == 'D') return 1;   /* dark        */
+		if (bg[0] == 'l' || bg[0] == 'L') return 0;   /* light       */
 	}
+	p = getenv("COLORFGBG");
+	if (p) {
+		const char *semi = strchr(p, ';');
+		if (semi) {
+			int b = atoi(semi + 1);
+			if (b >= 8) return 1;
+		}
+	}
+	/* Fallback: the OSC 11 background-colour query run once at startup
+	 * (see main).  -1 means the terminal didn't answer. */
+	if (kg_bg_dark >= 0) return kg_bg_dark;
+	return 0;
+}
+
+static int vc_truecolor(void)
+{
+	const char *ct, *term;
+
+	ct = getenv("COLORTERM");
+	if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) return 1;
+	term = getenv("TERM");
+	if (term) {
+		if (strstr(term, "truecolor") || strstr(term, "24bit") ||
+		    strstr(term, "kitty") || strstr(term, "alacritty") ||
+		    strstr(term, "wezterm")) return 1;
+	}
+	return 0;
+}
+
+/* Nearest index in the 256-colour 6x6x6 cube (16..231) for an RGB triple.
+ * Cube channel levels are {0,95,135,175,215,255}. */
+static int vc_nearest_cube(int r, int g, int b)
+{
+	static const int lvl[6] = {0, 95, 135, 175, 215, 255};
+	int ri, gi, bi, bestd, best;
+
+	bestd = 1 << 30; best = 0;
+	for (ri = 0; ri < 6; ri++)
+	for (gi = 0; gi < 6; gi++)
+	for (bi = 0; bi < 6; bi++) {
+		int d = (r-lvl[ri])*(r-lvl[ri]) + (g-lvl[gi])*(g-lvl[gi]) + (b-lvl[bi])*(b-lvl[bi]);
+		if (d < bestd) { bestd = d; best = 16 + 36*ri + 6*gi + bi; }
+	}
+	return best;
+}
+
+/* Format the SGR sequence for (r,g,b) into buf and return buf. */
+static const char *vc_format_rgb(char *buf, int size, int r, int g, int b, int tc)
+{
+	if (tc)
+		snprintf(buf, size, "\x1b[38;2;%d;%d;%dm", r, g, b);
+	else
+		snprintf(buf, size, "\x1b[38;5;%dm", vc_nearest_cube(r, g, b));
+	return buf;
+}
+
+/* Stable per-token SGR strings (display.c compares/caches by pointer).
+ * HL_MATCH stores a bg+fg true-colour pair (31 chars), so size for that. */
+static char color_seq[16][40];
+static int color_seq_ready;
+
+static void vc_init_colors(void)
+{
+	int dark, tc;
+	struct { int hl; int r, g, b; } tab[] = {
+		/* light palette — overwritten below if dark */
+		{ HL_COMMENT,   178,  34,  34 },  /* Firebrick    */
+		{ HL_MLCOMMENT, 178,  34,  34 },
+		{ HL_KEYWORD1,  160,  32, 240 },  /* Purple       */
+		{ HL_KEYWORD2,   34, 139,  34 },  /* ForestGreen  */
+		{ HL_STRING,    188, 143, 143 },  /* RosyBrown    */
+	};
+	int i;
+
+	dark = vc_dark_background();
+	tc = vc_truecolor();
+
+	if (dark) {
+		tab[0].r=255; tab[0].g=127; tab[0].b=0;    /* chocolate1   */
+		tab[1].r=255; tab[1].g=127; tab[1].b=0;
+		tab[2].r=0;   tab[2].g=255; tab[2].b=255;  /* Cyan1        */
+		tab[3].r=152; tab[3].g=251; tab[3].b=152;  /* PaleGreen    */
+		tab[4].r=255; tab[4].g=160; tab[4].b=122;  /* LightSalmon  */
+	}
+
+	for (i = 0; i < (int)(sizeof tab / sizeof tab[0]); i++)
+		vc_format_rgb(color_seq[tab[i].hl], sizeof color_seq[0],
+		              tab[i].r, tab[i].g, tab[i].b, tc);
+
+	/* Non-Emacs tokens: keep the basic ANSI codes that worked before. */
+	snprintf(color_seq[HL_NUMBER], sizeof color_seq[0], "\x1b[37m");  /* default-ish */
+	/* Search match faces.  Emacs' isearch (current) is a magenta/pink
+	 * background; lazy-highlight (other hits) is a subtler, dimmer bg
+	 * so the active match stands out.  Use different hues AND intensity:
+	 *
+	 *   HL_MATCH          — other hits: dim dark-slate bg, text keeps
+	 *                       its own syntax colour (no fg override)
+	 *   HL_MATCH_CURRENT  — active hit: vivid magenta bg + bold + white fg
+	 */
+	if (tc) {
+		snprintf(color_seq[HL_MATCH], sizeof color_seq[0],
+		         "\x1b[48;2;40;70;75m");            /* dim teal bg only */
+		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0],
+		         "\x1b[1;48;2;215;0;215m\x1b[38;2;255;255;255m"); /* vivid magenta + bold */
+	} else {
+		snprintf(color_seq[HL_MATCH], sizeof color_seq[0], "\x1b[44;37m");
+		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0], "\x1b[1;45;37m");
+	}
+	snprintf(color_seq[HL_NORMAL], sizeof color_seq[0], "\x1b[37m");  /* white       */
+
+	color_seq_ready = 1;
+}
+
+const char *editor_syntax_to_color(int hl)
+{
+	if (!color_seq_ready) vc_init_colors();
+	if (hl < 0 || hl >= (int)(sizeof color_seq / sizeof color_seq[0]))
+		return "\x1b[37m";
+	return color_seq[hl];
 }
 
 /* Map a shebang interpreter name to a file extension for syntax lookup.
@@ -1113,4 +1440,26 @@ void editor_select_syntax_highlight(char *filename)
 
 	/* No extension match — try hash-bang on first line of file */
 	select_syntax_by_shebang(filename);
+}
+
+/* True if `path` would select the syntax named `lang` — i.e. its name
+ * matches one of that language's filematch patterns (extension suffix or
+ * substring).  Used by xref to filter which files on disk to scan. */
+int syntax_path_matches_lang(const char *path, const char *lang)
+{
+	unsigned int j;
+
+	for (j = 0; j < HLDB_ENTRIES; j++) {
+		struct editor_syntax *s = HLDB + j;
+		unsigned int i;
+		if (!s->name || strcmp(s->name, lang) != 0) continue;
+		for (i = 0; s->filematch[i]; i++) {
+			const char *pat = s->filematch[i];
+			int plen = (int)strlen(pat);
+			const char *p = strstr(path, pat);
+			if (p && (pat[0] != '.' || p[plen] == '\0'))
+				return 1;
+		}
+	}
+	return 0;
 }

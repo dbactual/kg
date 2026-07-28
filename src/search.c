@@ -14,6 +14,47 @@
 
 /* Smart case: an all-lowercase query folds case, a query with any uppercase
  * letter searches case-sensitively, like GNU Emacs. */
+/* The most recent successfully completed incremental-search query.
+ * C-s/C-r with an empty prompt recalls this, like GNU Emacs. */
+static char last_search_query[KILO_QUERY_LEN + 1] = "";
+
+/* Multi-row highlight save/restore for incremental search.
+ * Every visible match is highlighted, so more than one row's hl
+ * array may be modified per iteration.  hl_stack holds, for each
+ * touched row, a snapshot of its original hl bytes so they can be
+ * restored before the next iteration or on exit.  */
+struct hl_save { int row; unsigned char *data; int len; };
+
+static void isearch_hl_save(struct hl_save *st, int *n, int maxn, int row)
+{
+	erow *r;
+	int i;
+
+	if (row < 0 || row >= editor.numrows) return;
+	for (i = 0; i < *n; i++)        /* already saved? */
+		if (st[i].row == row) return;
+	if (*n >= maxn) return;          /* stack full: skip extra */
+	r = &editor.row[row];
+	if (!r->hl || !r->rsize) return;
+	st[*n].row = row;
+	st[*n].len = r->rsize;
+	st[*n].data = malloc(r->rsize);
+	memcpy(st[*n].data, r->hl, r->rsize);
+	(*n)++;
+}
+
+static void isearch_hl_restore(struct hl_save *st, int *n)
+{
+	int i;
+	for (i = 0; i < *n; i++) {
+		erow *r = &editor.row[st[i].row];
+		if (r->hl && r->rsize == st[i].len)
+			memcpy(r->hl, st[i].data, st[i].len);
+		free(st[i].data);
+	}
+	*n = 0;
+}
+
 static int query_has_upper(const char *q, int qlen)
 {
 	int i;
@@ -124,15 +165,19 @@ static int isearch_handoff_key(int c)
 		editor_move_cursor(END_KEY);
 		break;
 	case CTRL_B:
+	case ARROW_LEFT:
 		editor_move_cursor(ARROW_LEFT);
 		break;
 	case CTRL_F:
+	case ARROW_RIGHT:
 		editor_move_cursor(ARROW_RIGHT);
 		break;
 	case CTRL_N:
+	case ARROW_DOWN:
 		editor_move_cursor(ARROW_DOWN);
 		break;
 	case CTRL_P:
+	case ARROW_UP:
 		editor_move_cursor(ARROW_UP);
 		break;
 	case CTRL_D:
@@ -188,10 +233,20 @@ void editor_find(int fd, int direction)
 	int start_row = editor.rowoff + editor.cy;
 	int start_col = 0;
 	int last_match_row = -1, last_match_col = -1;
-	int saved_hl_line = -1;  /* No saved HL */
 	int find_next = 0; /* if 1 search next, if -1 search prev. */
-	char *saved_hl = NULL;
 	int qlen = 0;
+	/* Multi-row highlight stack: one entry per touched row.  Cap at
+	 * a generous limit so a pathological query in a huge buffer does
+	 * not allocate unbounded memory; the current match is always
+	 * highlighted regardless. */
+	struct hl_save *hl_stack;
+	int hl_n = 0, hl_cap;
+	int r;
+
+	hl_cap = editor.numrows;
+	if (hl_cap < 1) hl_cap = 1;
+	if (hl_cap > 8192) hl_cap = 8192;
+	hl_stack = malloc((size_t)hl_cap * sizeof *hl_stack);
 
 	/* Anchor the search at point so a fresh query, and reverse search in
 	 * particular, starts where the cursor is rather than at the top.  The
@@ -216,12 +271,25 @@ void editor_find(int fd, int direction)
 				editor.cx = saved_cx; editor.cy = saved_cy;
 				editor.coloff = saved_coloff; editor.rowoff = saved_rowoff;
 			}
-			RESTORE_HL;
+			if (qlen > 0)
+				strcpy(last_search_query, query);
+			isearch_hl_restore(hl_stack, &hl_n);
 			editor_set_status_message("");
+			free(hl_stack);
 			return;
-		} else if (c == ARROW_RIGHT || c == ARROW_DOWN || c == CTRL_S) {
+		} else if (c == CTRL_S) {
+			if (qlen == 0 && last_search_query[0]) {
+				strcpy(query, last_search_query);
+				qlen = (int)strlen(query);
+				last_match_row = last_match_col = -1;
+			}
 			direction = find_next = 1;
-		} else if (c == ARROW_LEFT || c == ARROW_UP || c == CTRL_R) {
+		} else if (c == CTRL_R) {
+			if (qlen == 0 && last_search_query[0]) {
+				strcpy(query, last_search_query);
+				qlen = (int)strlen(query);
+				last_match_row = last_match_col = -1;
+			}
 			direction = find_next = -1;
 		} else if (isprint(c)) {
 			if (qlen < KILO_QUERY_LEN) {
@@ -231,7 +299,10 @@ void editor_find(int fd, int direction)
 				find_next = direction;
 			}
 		} else if (isearch_handoff_key(c)) {
-			RESTORE_HL;
+			if (qlen > 0)
+				strcpy(last_search_query, query);
+			isearch_hl_restore(hl_stack, &hl_n);
+			free(hl_stack);
 			return;
 		}
 
@@ -249,26 +320,60 @@ void editor_find(int fd, int direction)
 			}
 			find_next = 0;
 
-			/* Highlight */
-			RESTORE_HL;
+			/* Restore any rows highlighted last iteration, then
+			 * mark every match in the buffer.  The current match
+			 * (the one point lands on) gets HL_MATCH_CURRENT so it
+			 * stands out from the other HL_MATCH hits. */
+			isearch_hl_restore(hl_stack, &hl_n);
 
 			if (isearch_find_match(current, col, direction, query, qlen, fold,
 					       &match_row, &match_col, &match_len)) {
-				erow *row = &editor.row[match_row];
-
 				last_match_row = match_row;
 				last_match_col = match_col;
-				if (row->hl) {
-					saved_hl_line = match_row;
-					saved_hl = malloc(row->rsize);
-					memcpy(saved_hl, row->hl, row->rsize);
-					memset(row->hl + match_col, HL_MATCH, match_len);
+
+				/* Highlight all matches across the whole buffer.
+				 * Skip empty queries (shouldn't happen here). */
+				if (qlen > 0) {
+					for (r = 0; r < editor.numrows; r++) {
+						erow *row = &editor.row[r];
+						int off = 0;
+						if (!row->hl || !row->rsize)
+							continue;
+						while (off + qlen <= row->rsize) {
+							char *m = case_strstr(
+								row->render + off,
+								query, fold);
+							if (!m) break;
+							int mc = (int)(m - row->render);
+							int is_cur = (r == match_row &&
+								mc == match_col);
+							isearch_hl_save(hl_stack,
+								&hl_n, hl_cap, r);
+							memset(row->hl + mc,
+								is_cur ? HL_MATCH_CURRENT
+								       : HL_MATCH,
+								match_len);
+							off = mc + match_len;
+						}
+					}
 				}
+
 				/* Land point at the far end of the match in the
 				 * search direction: end when going forward, start
-				 * when going back, like Emacs isearch. */
-				editor_reveal_position_centered(match_row,
-				    match_col + (direction > 0 ? match_len : 0));
+				 * when going back, like Emacs isearch.  The match
+				 * was found in row->render (tab-expanded), so
+				 * convert the render offset to a chars byte
+				 * offset before positioning — otherwise tabs
+				 * inflate the column and point lands past the
+				 * match end. */
+				{
+					int render_col = match_col +
+						(direction > 0 ? match_len : 0);
+					int chars_col = render_col_to_chars(
+						&editor.row[match_row], render_col);
+					editor_reveal_position_centered(match_row,
+						chars_col);
+				}
 			}
 		}
 	}

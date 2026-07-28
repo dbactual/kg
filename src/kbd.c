@@ -31,7 +31,7 @@ static int handle_universal_arg(int c)
 			return 1;
 		}
 		return 0;
-	}
+	}	
 
 	if (c == CTRL_U) {
 		editor.prefix_arg *= 4;
@@ -149,6 +149,25 @@ void editor_process_keypress(int fd)
 	}
 	editor.last_char_time = tv;
 
+	/* Mouse events: a click focuses the window under the pointer and
+	 * moves point there; the wheel scrolls the active window.  These
+	 * run before the prefix/readonly filters so a click repositions
+	 * point even in a read-only or special buffer. */
+	if (c == MOUSE_CLICK) {
+		editor_mouse_click(mouse_col, mouse_row);
+		/* A click clears any in-progress prefix and the shift-select
+		 * region, like a cursor jump. */
+		editor.cx_prefix = 0;
+		editor.rect_prefix = 0;
+		editor.proj_prefix = 0;
+		editor.cc_prefix = 0;
+		editor.mark_highlight = 0;
+		editor.shift_select = 0;
+		return;
+	}
+	if (c == MOUSE_WHEEL_UP)   { editor_mouse_wheel(-1); return; }
+	if (c == MOUSE_WHEEL_DOWN) { editor_mouse_wheel( 1); return; }
+
 	/* Handle C-x r rectangle ops (second key after C-x r).  Every op
 	 * here mutates the buffer, so a read-only buffer rejects them
 	 * outright; only C-g (cancel) still has any business reaching
@@ -166,6 +185,35 @@ void editor_process_keypress(int fd)
 		case 'y': case CTRL_Y: editor_yank_rect();   break;
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-x r %c is undefined", c); break;
+		}
+		return;
+	}
+
+	/* Handle C-x p project ops (second key after C-x p).  These open
+	 * special read-only buffers or pickers; they don't mutate the current
+	 * buffer, so a read-only buffer is fine.  Only C-g cancels. */
+	if (editor.proj_prefix) {
+		editor.proj_prefix = 0;
+		switch (c) {
+		case 'v':              vc_open_dir();    break;  /* vc-dir */
+		case 's':              vc_open_status(); break;  /* git status */
+		case 'd':              vc_open_diff();   break;  /* git diff */
+		case 'l':              vc_open_log();    break;  /* git log */
+		case 'g':              project_grep(fd); break;  /* project grep */
+		case 'f':              project_find_file(fd); break; /* find file */
+		case CTRL_G:           editor_set_status_message(""); break;
+		default:               editor_set_status_message("C-x p %c is undefined", c); break;
+		}
+		return;
+	}
+
+	/* Handle C-c prefix commands (second key after C-c). */
+	if (editor.cc_prefix) {
+		editor.cc_prefix = 0;
+		switch (c) {
+		case 'g':              editor_goto_line(fd); break;  /* C-c g: goto line */
+		case CTRL_G:           editor_set_status_message(""); break;
+		default:               editor_set_status_message("C-c %c is undefined", c); break;
 		}
 		return;
 	}
@@ -257,6 +305,10 @@ void editor_process_keypress(int fd)
 			editor.rect_prefix = 1;
 			editor_set_status_message("C-x r-");
 			break;
+		case 'p':       /* C-x p-: project prefix */
+			editor.proj_prefix = 1;
+			editor_set_status_message("C-x p-");
+			break;
 		case CTRL_G:    /* C-x C-g: Cancel C-x prefix */
 			editor_set_status_message("");
 			break;
@@ -282,18 +334,59 @@ void editor_process_keypress(int fd)
 		n = 1;
 	}
 
-	/* q closes special *...* buffers, but only if another buffer exists */
+	/* q closes special *...* buffers, but only if another buffer exists.
+	 * In the per-file *vc-diff* buffer, q returns to the buffer that was
+	 * active when the diff was opened (usually *vc-dir*) rather than the
+	 * generic nearest-buffer fallback. */
 	if (c == 'q' && is_special_buffer(editor.filename) && buf_count > 1) {
+		if (editor.syntax && (editor.syntax->flags & SHL_DIFF) &&
+		    editor.filename &&
+		    (strcmp(editor.filename, "*vc-diff*") == 0 ||
+		     strcmp(editor.filename, "*git-show*") == 0)) {
+			vc_filediff_close(fd);
+			return;
+		}
 		buf_kill(fd);
 		return;
 	}
 
-	/* In a read-only buffer such as the *Buffer List*, Enter opens the item
-	 * at point.  Editing itself is refused by the mutation commands, which
-	 * bail via editor_readonly_blocked(). */
+	/* g refreshes the *vc-dir* buffer in place by rebuilding it. */
+	if (c == 'g' && editor.syntax &&
+	    (editor.syntax->flags & SHL_VCDIR)) {
+		vc_open_dir();
+		return;
+	}
+
+	/* In a read-only special buffer, Enter opens the item at point.
+	 * Which handler runs depends on the buffer's syntax flag:
+	 *   SHL_IBUFFER   → *Buffer List*  (open the named buffer)
+	 *   SHL_GITSTATUS → *git-status*   (open the file at line 1)
+	 *   SHL_DIFF      → *git-diff*     (open the file at the hunk line)
+	 * Editing itself is refused by the mutation commands, which bail
+	 * via editor_readonly_blocked(). */
 	if (editor.readonly && c == ENTER) {
+		if (editor.syntax) {
+			if (editor.syntax->flags & SHL_GITSTATUS) { vc_status_select(); return; }
+			if (editor.syntax->flags & SHL_DIFF)      { vc_diff_select();   return; }
+			if (editor.syntax->flags & SHL_GITLOG)    { vc_log_select();    return; }
+			if (editor.syntax->flags & SHL_VCDIR)     { vc_dir_select();    return; }
+			if (editor.syntax->flags & SHL_GREP)      { grep_select();      return; }
+			if (editor.syntax->flags & SHL_XREF)      { xref_select();      return; }
+			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
+		}
 		buf_ibuffer_select();
 		return;
+	}
+
+	/* In the *vc-dir* buffer, TAB opens a per-file diff at point.
+	 * In the per-file *vc-diff* buffer, TAB closes it and returns to
+	 * *vc-dir* (the same key toggles back). */
+	if (editor.readonly && c == TAB) {
+		if (editor.syntax) {
+			if (editor.syntax->flags & SHL_VCDIR)  { vc_dir_diff(); return; }
+			if (editor.syntax->flags & SHL_DIFF)  { vc_filediff_close(fd); return; }
+			if (editor.syntax->flags & SHL_GITLOG) { vc_log_select(); return; }
+		}
 	}
 
 	/* Reset cycle states if the previous key wasn't the cycling command. */
@@ -302,6 +395,9 @@ void editor_process_keypress(int fd)
 	if (editor.last_key != ALT_R)
 		editor.window_line_state = 0;
 	editor.last_key = c;
+	/* Reset the dabbrev cycle on any non-TAB key so a fresh press starts
+	 * a new expansion (Emacs behaviour). */
+	if (c != TAB) dabbrev_reset();
 
 	/* Shift+motion: drop the mark at the current position the first
 	 * time the user starts a shift-selected region, so subsequent
@@ -323,6 +419,26 @@ void editor_process_keypress(int fd)
 		break;
 	case ENTER:         /* Enter */
 		while (n--) editor_insert_newline();
+		break;
+	case TAB:           /* TAB: region indent, dabbrev, or literal tab */
+		if (editor_readonly_blocked())
+			break;
+		if (editor.mark_set && editor.mark_highlight) {
+			/* Active region: indent rigidly by 4, keeping the region. */
+			while (n--) editor_indent_rigidly(4);
+		} else if (editor.echo_cursor_col > 0) {
+			/* In a minibuffer prompt: let the prompt handle completion
+			 * (path prompts already do; others ignore TAB). */
+			editor_insert_char_auto_complete(TAB);
+		} else {
+			/* Otherwise: dabbrev-expand (consumes TAB if there's a word
+			 * prefix before point); else insert a literal tab. */
+			int expanded = 0;
+			while (n-- && !expanded)
+				expanded = dabbrev_expand();
+			if (!expanded)
+				editor_insert_char_auto_complete(TAB);
+		}
 		break;
 	case CTRL_A:        /* Beginning of line */
 		editor_move_cursor(HOME_KEY);
@@ -420,6 +536,10 @@ void editor_process_keypress(int fd)
 	case CTRL_X:        /* C-x prefix */
 		editor.cx_prefix = 1;
 		editor_set_status_message("C-x-");
+		return;
+	case CTRL_C:        /* C-c prefix */
+		editor.cc_prefix = 1;
+		editor_set_status_message("C-c-");
 		return;
 	case CTRL_Y:        /* Yank (paste) */
 	case SHIFT_INSERT:  /* CUA paste */
@@ -539,6 +659,12 @@ void editor_process_keypress(int fd)
 	case ALT_SPACE:     /* M-SPC: just one space */
 		editor_just_one_space();
 		break;
+	case ALT_PERIOD:    /* M-.: xref-find-definitions (regex fallback) */
+		xref_find_definitions();
+		break;
+	case ALT_COMMA:     /* M-,: pop the xref mark ring (jump back) */
+		xref_pop_mark_ring();
+		break;
 	case ALT_M:         /* M-m: back-to-indentation */
 		editor_move_to_indentation();
 		break;
@@ -551,17 +677,17 @@ void editor_process_keypress(int fd)
 	case ALT_R:         /* M-r: top/middle/bottom of window cycle */
 		editor_move_to_window_line();
 		break;
-	case ALT_ARROW_LEFT:    /* M-arrow: select window in that direction */
-		win_move_dir(-1, 0);
+	case ALT_ARROW_LEFT:    /* M-left: back one word (like M-b) */
+		while (n--) editor_move_word_backward();
 		break;
-	case ALT_ARROW_RIGHT:
-		win_move_dir(1, 0);
+	case ALT_ARROW_RIGHT:   /* M-right: forward one word (like M-f) */
+		while (n--) editor_move_word_forward();
 		break;
-	case ALT_ARROW_UP:
-		win_move_dir(0, -1);
+	case ALT_ARROW_UP:      /* M-up: back one paragraph (like M-{) */
+		while (n--) editor_move_paragraph_backward();
 		break;
-	case ALT_ARROW_DOWN:
-		win_move_dir(0, 1);
+	case ALT_ARROW_DOWN:    /* M-down: forward one paragraph (like M-}) */
+		while (n--) editor_move_paragraph_forward();
 		break;
 	case ALT_SHIFT_ARROW_LEFT:  /* M-S-arrow: divider travels with arrow */
 		win_resize_dir(-1, 0, n);
@@ -664,8 +790,10 @@ void editor_process_keypress(int fd)
 		/* Filter out control characters and non-printable characters.
 		 * Only allow printable ASCII (32-126) and TAB.  (ENTER is handled
 		 * as its own case above and would never reach here.)  Repeats N
-		 * times when a C-u prefix preceded the key. */
-		if (c == TAB || (c >= 32 && c < 127))
+		 * times when a C-u prefix preceded the key.
+		 *
+		 * TAB has its own case below; other keys fall through to here. */
+		if (c >= 32 && c < 127)
 			while (n--) editor_insert_char_auto_complete(c);
 		/* Silently ignore all other control/non-printable characters */
 		break;

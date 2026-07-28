@@ -4,7 +4,7 @@
 
 /* Synthetic syntax records for special modes. */
 static struct editor_syntax ibuffer_syntax = {
-	"IBuffer", NULL, NULL, "", "", "", 0
+	"IBuffer", NULL, NULL, "", "", "", SHL_IBUFFER
 };
 static struct editor_syntax text_syntax = {
 	"Text", NULL, NULL, "", "", "", 0
@@ -335,6 +335,32 @@ void buf_display_name(int idx, char *out, size_t outsize)
 	snprintf(out, outsize, "%.*s/%s", parent_len, parent_start, base);
 }
 
+/* Full path of buffer idx's file, with $HOME abbreviated to ~, written to
+ * out.  Special buffers (no filename or a *...* name) show their name as-is. */
+void buf_display_full_name(int idx, char *out, size_t outsize)
+{
+	struct editor_buffer *b = &buflist[idx];
+	const char *path = b->filename;
+	const char *home;
+	size_t hl;
+
+	if (!path) {
+		snprintf(out, outsize, "[new]");
+		return;
+	}
+	if (path[0] == '*') {
+		snprintf(out, outsize, "%s", path);
+		return;
+	}
+	home = getenv("HOME");
+	if (home && home[0] && (hl = strlen(home)) > 0 &&
+	    strncmp(path, home, hl) == 0 && path[hl] == '/') {
+		snprintf(out, outsize, "~%s", path + hl);
+		return;
+	}
+	snprintf(out, outsize, "%s", path);
+}
+
 /* Reset the echo-area cursor state and clear the status line.  Centralises
  * the "leaving the minibuffer" handshake so every exit path agrees. */
 static int prompt_done(int rc)
@@ -398,9 +424,14 @@ void editor_prompt_prefill_dir(char *buf, int bufsize)
 int editor_read_line(int fd, const char *prompt, char *buf, int bufsize)
 {
 	int plen = (int)strlen(prompt);
-	int len = 0, pos = 0, c;
+	int len = (int)strlen(buf), pos = len;
+	int c;
 
-	buf[0] = '\0';
+	/* buf may carry a pre-fill (e.g. the word at point for grep); position
+	 * the cursor at the end so the user can append, edit, or just Enter. */
+	if (len >= bufsize) len = bufsize - 1;
+	buf[len] = '\0';
+	pos = len;
 	while (1) {
 		prompt_refresh(prompt, plen, buf, pos);
 		c = editor_read_key(fd);
@@ -863,50 +894,76 @@ void buf_select_interactive(int fd)
 	}
 }
 
+/* Find the slot of the active buffer whose stored filename equals `fn`,
+ * or -1 if none.  Compares the full stored path, like the existing-buffer
+ * check that used to live inline in buf_open_file_ro. */
+int buf_find_by_filename(const char *fn)
+{
+	int i;
+
+	if (!fn) return -1;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (buflist[i].active && buflist[i].filename &&
+		    strcmp(buflist[i].filename, fn) == 0)
+			return i;
+	}
+	return -1;
+}
+
+/* Open `path` in a buffer, switching to it.  If the file is already open
+ * in an existing buffer, just switch to that slot.  Otherwise load it into
+ * a free slot (creating one if needed), mirroring the tail of the old
+ * buf_open_file_ro.  `readonly` marks a freshly loaded buffer read-only;
+ * an already-open buffer keeps its own readonly state.  Returns the slot
+ * index on success, -1 on failure (too many buffers). */
+int buf_open_path(const char *path, int readonly)
+{
+	int i, slot;
+
+	slot = buf_find_by_filename(path);
+	if (slot >= 0) {
+		buf_save_current_state();
+		buf_restore_from_slot(slot);
+		return slot;
+	}
+
+	if (buf_count >= MAX_BUFFERS) {
+		editor_set_status_message("Too many open buffers (%d max).", MAX_BUFFERS);
+		return -1;
+	}
+
+	slot = -1;
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (!buflist[i].active) { slot = i; break; }
+	}
+	if (slot < 0) return -1; /* should not happen given buf_count check above */
+
+	buf_save_current_state();
+	buf_reset();
+	editor.readonly = readonly;
+	editor_select_syntax_highlight((char *)path);
+	editor_open((char *)path);
+	buf_save_to_slot(slot);
+	buf_restore_from_slot(slot);
+	buf_count++;
+	return slot;
+}
+
 /* Open a file in a new buffer, prompting for the filename.  If the file is
  * already open in an existing buffer, switch to it instead.
  * readonly: if 1, mark the buffer read-only after loading. */
 static void buf_open_file_ro(int fd, int readonly)
 {
 	char query[256];
-	int i, slot;
 	const char *prompt = readonly ? "Open file read-only: " : "Open file: ";
+	int slot;
 
 	editor_prompt_prefill_dir(query, sizeof(query));
 	if (editor_read_line_path(fd, prompt, query, sizeof(query)) < 0 || query[0] == '\0')
 		return;
 
-	/* Switch to existing buffer if the file is already open. */
-	for (i = 0; i < MAX_BUFFERS; i++) {
-		if (buflist[i].active && buflist[i].filename &&
-		    strcmp(buflist[i].filename, query) == 0) {
-			buf_save_current_state();
-			buf_restore_from_slot(i);
-			editor_set_status_message("%s", editor.filename);
-			return;
-		}
-	}
-
-	if (buf_count >= MAX_BUFFERS) {
-		editor_set_status_message("Too many open buffers (%d max).", MAX_BUFFERS);
-		return;
-	}
-
-	/* Find a free slot. */
-	slot = -1;
-	for (i = 0; i < MAX_BUFFERS; i++) {
-		if (!buflist[i].active) { slot = i; break; }
-	}
-	if (slot < 0) return; /* should not happen given buf_count check above */
-
-	buf_save_current_state();
-	buf_reset();
-	editor.readonly = readonly;
-	editor_select_syntax_highlight(query);
-	editor_open(query);
-	buf_save_to_slot(slot);
-	buf_restore_from_slot(slot);
-	buf_count++;
+	slot = buf_open_path(query, readonly);
+	if (slot < 0) return;
 	editor_set_status_message("%s%s", editor.filename ? editor.filename : "[new]",
 		editor.readonly ? " [read-only]" : "");
 }
@@ -1029,8 +1086,8 @@ void buf_kill(int fd)
  * find or allocate its slot, clear any prior content, run `populate`
  * to fill rows, then mark the buffer read-only, attach `syn`, and
  * post `status`.  Shared by buf_open_list and buf_open_help. */
-static void buf_open_special(const char *name, struct editor_syntax *syn,
-                             void (*populate)(void), const char *status)
+void buf_open_special(const char *name, struct editor_syntax *syn,
+                      void (*populate)(void), const char *status)
 {
 	int i, slot = -1, existing = -1;
 
@@ -1122,8 +1179,35 @@ static void buf_list_populate(void)
  * Press q or C-x k to close. */
 void buf_open_list(void)
 {
+	int prev = buf_current;
+	const char *prevfile =
+		(prev >= 0 && \
+			prev < MAX_BUFFERS && \
+			buflist[prev].active && \
+			buflist[prev].filename)
+		? buflist[prev].filename : NULL;
+
 	buf_open_special(IBUF_NAME, &ibuffer_syntax, buf_list_populate,
 	                 "Buffer list — RET to open, q or C-x k to close.");
+
+	if (prevfile) {
+		int i, target = -1;
+		for (i = 2; i < editor.numrows; i++) {
+			if (editor.row[i].size > IBUF_FILENAME_OFFSET &&
+			    strcmp(editor.row[i].chars + IBUF_FILENAME_OFFSET,
+			           prevfile) == 0) {
+				target = i;
+				break;
+			}
+		}
+		if (target >= 0) {
+			editor.rowoff = target - editor.screenrows / 2;
+			if (editor.rowoff < 0) editor.rowoff = 0;
+			editor.cy = target - editor.rowoff;
+			editor.cx = 0;
+			editor.coloff = 0;
+		}
+	}
 }
 
 /* Populate the *help* buffer rows from the static key-binding table. */
@@ -1155,7 +1239,7 @@ void buf_ibuffer_select(void)
 	int i;
 
 	if (editor.syntax != &ibuffer_syntax) return; /* only valid in IBuffer mode */
-	if (filerow < 2 || filerow >= editor.numrows) return; /* skip header rows */
+	if (filerow < IBUF_HEADER_ROWS || filerow >= editor.numrows) return; /* skip header rows */
 	if (editor.row[filerow].size <= IBUF_FILENAME_OFFSET) return;
 
 	filename = editor.row[filerow].chars + IBUF_FILENAME_OFFSET;

@@ -15,6 +15,90 @@ windows, incremental search, and multi-level undo, kg punches above its
 weight while staying dependency-free — no curses, just standard VT100
 escape sequences.
 
+## Changes in this fork
+
+The `updates` branch diverges from `origin/master` (upstream
+[troglobit/kg][mg]) with the following improvements, grouped by area.
+Each entry lists the key bindings or commands affected.
+
+### Syntax highlighting
+- **24-bit true color** with Emacs-accurate font-lock hues, light/dark
+  palettes, and **OSC 11 background auto-detection** (also honors
+  `KG_BG`/`COLORFGBG).  Replaced the 256-color cube, which was too
+  garish for Emacs colours.
+- **Go** (`.go`) language support.
+- **`.env` files** are highlighted as shell scripts.
+- `git status`/`diff` syntax highlighters for `vc-mode` buffers.
+
+### Incremental search
+- **Every** match on screen is highlighted, not just the current one.
+  The current match is bold magenta; other matches get a dim teal
+  background so the active one stands out.
+- **`C-s`/`C-r` with an empty prompt recalls the last search term**
+  and searches immediately, like GNU Emacs.
+- **Arrow keys end the search** and move point from the match
+  (previously they repeated the search forward/backward).
+- **`C-g`, `ESC`, and `Enter`** all record the query as the prior
+  search term for later recall.
+- Fixed isearch cursor position on tab-indented lines.
+- Fixed the match highlight SGR being truncated (lost the first
+  character of the match) and background bleeding past the match.
+
+### Tab completion
+- **`TAB` is context-sensitive**, like Emacs:
+  - active region → **indent-rigidly** by 4 spaces (region stays
+    selected for further `TAB`s);
+  - minibuffer prompt → pass `TAB` to the prompt;
+  - word prefix before point → **`dabbrev-expand`**: scan the buffer
+    for the nearest word starting with that prefix and replace the
+    prefix; repeated `TAB` cycles through candidates;
+  - otherwise → literal tab.
+- Any non-`TAB` key resets the dabbrev cycle.
+
+### Project & xref
+- **`C-x p` prefix** (replaces `C-x v`) for project operations:
+  - `C-x p s` git status, `C-x p d` git diff, `C-x p l` git log,
+    `C-x p v` vc-dir (status + recent commit graph);
+  - `C-x p g` project grep (from project root);
+  - `C-x p f` fuzzy file finder.
+- **`M-.`** finds definitions by regex across files **on disk** (not
+  open buffers), with per-language patterns; rejects indented
+  call-site false positives (column-0 + keyword check).  **`M-,`**
+  pops the mark ring to jump back.
+- **`M-x grep`** with `file:line` jump; uses **ripgrep** when
+  available; pre-fills the pattern with the word at point.
+- Project root detection walks up from the current file's directory
+  for `.git`/`Makefile`/`package.json`/`Cargo.toml`/`.hg`/`.svn`/
+  `TAGS`.  Backup/cruft files (`*.~`, `.#*`, `*.swp`, `.orig`,
+  `.rej`, `.bak`, `.merge`, `core`) are excluded from file scans.
+
+### vc-mode (git)
+- `C-x p s`/`d`/`l`/`v` open `*git-status*`, `*vc-diff*`, `*git-log*`,
+  and `*vc-dir*` buffers with **Enter-to-jump** to the file/commit.
+- `TAB` in `*git-log*` opens `git show` for the commit; `TAB`/`q` in
+  `*git-show*` returns to the log.  `q` in `*vc-diff*` closes it and
+  returns to the prior buffer.  `g` in `*vc-dir*` refreshes.
+- `*vc-dir*` shows `git status --porcelain` plus the recent commit
+  log graph.
+
+### Mouse support
+- SGR mouse reporting with **click-to-position** and **1-line wheel
+  scroll**.  Fixed click-after-scroll using the live row offset
+  (previously the first click after a scroll jumped back to the top).
+
+### Editor improvements
+- **`C-c g`** prompts for a line number and jumps there (goto-line),
+  matching `M-g`/`M-x goto-line`.
+- **Buffer list** (`C-x C-b`) pre-selects the current buffer and
+  wraps the cursor top↔bottom across file rows.
+- **`M-arrow`** keys → word/paragraph motion (was window switching).
+- **`M-q`** (fill-paragraph) restores the cursor to the same position
+  in the reflowed text.
+- **`M-w`/`C-w`** copy the region to the **system clipboard**
+  (`pbcopy`/`xsel`/`wl-copy`) in addition to the kill ring.
+- **Mode line** shows the full file path with `~` for `$HOME`.
+- **Splash screen** on startup when no file is given.
+
 ## Features
 
 <a href="doc/screenshot.png"><img align="right" src="doc/screenshot.png" width=360 title="kg in action"></a>

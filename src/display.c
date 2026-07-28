@@ -1,6 +1,7 @@
 /* ============================= Terminal update ============================ */
 
 #include "def.h"
+#include <string.h>
 
 #define ABUF_INIT {NULL,0}
 
@@ -15,8 +16,8 @@ static const char *kg_logo[] = {
 	"╭───╯  ╰───╮ ",
 	"│          │ ",
 	"│  │       │ ",
-	"│  │╱ ╭─╮  │ Your fingers know this",
-	"│  │╲ ╰─┤  │   Just enough Emacs",
+	"│  │╱ ╭─╮  │ ",
+	"│  │╲ ╰─┤  │ ",
 	"│     ╰─╯  │ ",
 	"╰──────────╯ ",
 };
@@ -79,6 +80,29 @@ int chars_to_render_col(erow *row, int chars_col)
 	return idx;
 }
 
+/* Inverse of chars_to_render_col(): given an offset into row->render
+ * (the tab-expanded buffer), return the matching byte offset into
+ * row->chars.  A target that falls inside a tab's expansion snaps to
+ * the tab's start byte (the closest representable chars position). */
+int render_col_to_chars(erow *row, int render_col)
+{
+	int j, ridx = 0;
+
+	if (render_col <= 0) return 0;
+	for (j = 0; j < row->size; j++) {
+		if (row->chars[j] == TAB) {
+			int next = ridx + 1;
+			while ((next + 1) % 8 != 0) next++;
+			if (next > render_col) break;  /* target inside this tab */
+			ridx = next;
+		} else {
+			if (ridx + 1 > render_col) break;
+			ridx++;
+		}
+	}
+	return j;
+}
+
 /* Render the text rows of one window into ab.
  * win_y, win_x, win_h, win_w describe the window's position/size.
  * rowoff/coloff/numrows/rows describe the buffer viewport.
@@ -129,7 +153,7 @@ static void draw_window_rows(struct abuf *ab,
 
 	for (y = 0; y < win_h; y++) {
 		int fr = rowoff + y;
-		int current_color = -1;
+		const char *current_color = NULL;
 		int current_reverse = 0;
 		int hi_lo = -1, hi_hi = -1;   /* highlight bounds in render-col, half-open */
 		int len, vcol_used = 0;
@@ -227,6 +251,9 @@ static void draw_window_rows(struct abuf *ab,
 				}
 			}
 
+			const char *match_color = editor_syntax_to_color(HL_MATCH);
+			const char *cur_match_color = editor_syntax_to_color(HL_MATCH_CURRENT);
+#define IS_MATCH_COLOR(p) ((p) == match_color || (p) == cur_match_color)
 			for (j = 0; j < len; j++) {
 				int render_col = coloff + j;
 				int want_rev = (render_col >= hi_lo && render_col < hi_hi);
@@ -248,21 +275,32 @@ static void draw_window_rows(struct abuf *ab,
 					/* The [0m reset just cleared every attribute, so the
 					 * next iteration must re-establish whatever color and
 					 * reverse state it actually wants. */
-					current_color = -1;
+					current_color = NULL;
 					current_reverse = 0;
 				} else if (hl[j] == HL_NORMAL) {
-					if (current_color != -1) {
-						ab_append(ab, "\x1b[39m", 5);
-						current_color = -1;
+					if (current_color) {
+						/* HL_MATCH/HL_MATCH_CURRENT set a background
+						 * colour; a plain foreground reset (\x1b[39m)
+						 * would leave it active, so do a full reset
+						 * when leaving a match highlight. */
+						if (IS_MATCH_COLOR(current_color)) {
+							ab_append(ab, "\x1b[0m", 4);
+							current_reverse = 0;
+						} else {
+							ab_append(ab, "\x1b[39m", 5);
+						}
+						current_color = NULL;
 					}
 					ab_append(ab, c+j, 1);
 				} else {
-					int color = editor_syntax_to_color(hl[j]);
+					const char *color = editor_syntax_to_color(hl[j]);
 					if (color != current_color) {
-						char cbuf[16];
-						int clen = snprintf(cbuf, sizeof(cbuf), "\x1b[%dm", color);
+						if (IS_MATCH_COLOR(current_color)) {
+							ab_append(ab, "\x1b[0m", 4);
+							current_reverse = 0;
+						}
+						ab_append(ab, color, (int)strlen(color));
 						current_color = color;
-						ab_append(ab, cbuf, clen);
 					}
 					ab_append(ab, c+j, 1);
 				}
@@ -317,7 +355,7 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	int bufidx, int is_active, int cur_row, int cur_col, int total_rows, int rowoff, int win_h)
 {
 	char status[512];
-	char bname[128];
+	char bname[300];
 	int len;
 	struct editor_buffer *b = &buflist[bufidx];
 	const char *modename = b->syntax ? b->syntax->name : "Fundamental";
@@ -328,11 +366,10 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	const char *flags;
 	char pos[8];
 
-	/* Show only the basename in the mode line (Emacs-style); the directory
-	 * part is still available via C-x C-b.  buf_display_name() also
-	 * prepends the parent directory when another open buffer shares the
-	 * basename, so foo and dir/foo can be told apart. */
-	buf_display_name(bufidx, bname, sizeof(bname));
+	/* Show the full path (with ~ for $HOME) in the mode line so the
+	 * user always knows which file they're in.  Special *...* buffers
+	 * show their name as-is. */
+	buf_display_full_name(bufidx, bname, sizeof(bname));
 	if (is_current ? editor.disk_changed : b->disk_changed)
 		changed = " (changed)";
 
