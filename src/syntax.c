@@ -1031,7 +1031,7 @@ void editor_update_syntax(erow *row)
 		if (scs[0] && prev_sep && *p == scs[0] &&
 		    (!scs[1] || *(p+1) == scs[1])) {
 			/* From here to end is a comment */
-			memset(row->hl+i, HL_COMMENT, row->size-i);
+			memset(row->hl+i, HL_COMMENT, row->rsize-i);
 			return;
 		}
 
