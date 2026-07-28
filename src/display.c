@@ -251,6 +251,7 @@ static void draw_window_rows(struct abuf *ab,
 				}
 			}
 
+			const char *match_color = editor_syntax_to_color(HL_MATCH);
 			for (j = 0; j < len; j++) {
 				int render_col = coloff + j;
 				int want_rev = (render_col >= hi_lo && render_col < hi_hi);
@@ -276,13 +277,26 @@ static void draw_window_rows(struct abuf *ab,
 					current_reverse = 0;
 				} else if (hl[j] == HL_NORMAL) {
 					if (current_color) {
-						ab_append(ab, "\x1b[39m", 5);
+						/* HL_MATCH sets a background colour; a plain
+						 * foreground reset (\x1b[39m) would leave it
+						 * active, so do a full reset when leaving the
+						 * match highlight. */
+						if (current_color == match_color) {
+							ab_append(ab, "\x1b[0m", 4);
+							current_reverse = 0;
+						} else {
+							ab_append(ab, "\x1b[39m", 5);
+						}
 						current_color = NULL;
 					}
 					ab_append(ab, c+j, 1);
 				} else {
 					const char *color = editor_syntax_to_color(hl[j]);
 					if (color != current_color) {
+						if (current_color == match_color) {
+							ab_append(ab, "\x1b[0m", 4);
+							current_reverse = 0;
+						}
 						ab_append(ab, color, (int)strlen(color));
 						current_color = color;
 					}
