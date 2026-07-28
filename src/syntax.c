@@ -1295,18 +1295,21 @@ static void vc_init_colors(void)
 
 	/* Non-Emacs tokens: keep the basic ANSI codes that worked before. */
 	snprintf(color_seq[HL_NUMBER], sizeof color_seq[0], "\x1b[37m");  /* default-ish */
-	/* Search match: Emacs' isearch face is a magenta/pink background
-	 * with white foreground.  Use true-colour when available, else the
-	 * 8-color magenta+white fallback.
-	 *   HL_MATCH          — lazy-highlight: dimmer pink, for other hits
-	 *   HL_MATCH_CURRENT  — the active match: stronger magenta + bold */
+	/* Search match faces.  Emacs' isearch (current) is a magenta/pink
+	 * background; lazy-highlight (other hits) is a subtler, dimmer bg
+	 * so the active match stands out.  Use different hues AND intensity:
+	 *
+	 *   HL_MATCH          — other hits: dim dark-slate bg, text keeps
+	 *                       its own syntax colour (no fg override)
+	 *   HL_MATCH_CURRENT  — active hit: vivid magenta bg + bold + white fg
+	 */
 	if (tc) {
 		snprintf(color_seq[HL_MATCH], sizeof color_seq[0],
-		         "\x1b[48;2;180;100;200m\x1b[38;2;255;255;255m"); /* soft orchid bg */
+		         "\x1b[48;2;54;54;80m");            /* dim slate bg only */
 		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0],
-		         "\x1b[1;48;2;215;0;215m\x1b[38;2;255;255;255m"); /* bright magenta + bold */
+		         "\x1b[1;48;2;215;0;215m\x1b[38;2;255;255;255m"); /* vivid magenta + bold */
 	} else {
-		snprintf(color_seq[HL_MATCH], sizeof color_seq[0], "\x1b[45;37m");
+		snprintf(color_seq[HL_MATCH], sizeof color_seq[0], "\x1b[44;37m");
 		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0], "\x1b[1;45;37m");
 	}
 	snprintf(color_seq[HL_NORMAL], sizeof color_seq[0], "\x1b[37m");  /* white       */
