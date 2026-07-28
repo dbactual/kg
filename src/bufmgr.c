@@ -1291,9 +1291,17 @@ preselect:
 			}
 		}
 		if (target >= 0) {
-			editor.rowoff = target - editor.screenrows / 2;
-			if (editor.rowoff < 0) editor.rowoff = 0;
-			editor.cy = target - editor.rowoff;
+			/* Keep the header rows visible: start at the top of the
+			 * list (rowoff = 0) and place the cursor on the target
+			 * row.  Only scroll when the target is past the visible
+			 * area, and then only enough to show it. */
+			editor.rowoff = 0;
+			if (target < editor.screenrows) {
+				editor.cy = target;
+			} else {
+				editor.rowoff = target - editor.screenrows + 1;
+				editor.cy = target - editor.rowoff;
+			}
 			editor.cx = 0;
 			editor.coloff = 0;
 		}
