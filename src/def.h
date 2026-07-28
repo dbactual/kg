@@ -99,6 +99,7 @@ int tty_query_background(int fd);
 #define SHL_VCDIR            (1<<8) /* VC-dir summary/file-list highlighter.*/
 #define SHL_GREP             (1<<9) /* *grep* file:line highlighter.        */
 #define SHL_XREF             (1<<10)/* *xref* definition-match highlighter.*/
+#define SHL_TRIPLE_QUOTE     (1<<11)/* Python-style """ and ''' strings.    */
 
 /* Key action codes */
 enum KEY_ACTION {

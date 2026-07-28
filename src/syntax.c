@@ -552,7 +552,7 @@ char *MD_HL_keywords[]   = {NULL};
  * comments delimiters and flags. */
 struct editor_syntax HLDB[] = {
 	{ "C",          C_HL_extensions,       C_HL_keywords,       "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
-	{ "Python",     PYTHON_HL_extensions,  PYTHON_HL_keywords,  "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
+	{ "Python",     PYTHON_HL_extensions,  PYTHON_HL_keywords,  "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS | SHL_TRIPLE_QUOTE },
 	{ "Shell",      SHELL_HL_extensions,   SHELL_HL_keywords,   "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "JavaScript", JS_HL_extensions,      JS_HL_keywords,      "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Rust",       RUST_HL_extensions,    RUST_HL_keywords,    "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
@@ -945,11 +945,13 @@ static void grep_syntax(erow *row)
  * to the right syntax highlight type (HL_* defines). */
 void editor_update_syntax(erow *row)
 {
-	int in_string = 0; /* Are we inside "" or '' ? */
-	int in_comment = 0; /* Are we inside multi-line comment? */
-	int prev_sep = 1; /* Tell the parser if 'i' points to start of word. */
+	int in_string = 0;    /* Are we inside "" or '' ? */
+	int in_tq_string = 0; /* Inside """ or ''' (Python triple-quote)? */
+	int in_comment = 0;   /* Are we inside multi-line comment? */
+	int prev_sep = 1;     /* Tell the parser if 'i' points to start of word. */
 	char *p = row->render;
-	int i = 0; /* Current char offset */
+	int i = 0;            /* Current char offset */
+	int tq = 0;           /* SHL_TRIPLE_QUOTE flag */
 
 	row->hl = realloc(row->hl, row->rsize);
 	/* An empty row has rsize 0; realloc may hand back NULL, and
@@ -1002,6 +1004,8 @@ void editor_update_syntax(erow *row)
 	char *mce = editor.syntax->multiline_comment_end;
 	char *scs = editor.syntax->singleline_comment_start;
 
+	tq = (editor.syntax->flags & SHL_TRIPLE_QUOTE) != 0;
+
 	/* Point to the first non-space char. */
 	while (*p && isspace(*p)) {
 		p++;
@@ -1012,6 +1016,15 @@ void editor_update_syntax(erow *row)
 	 * with an open comment state. */
 	if (row->idx > 0 && editor_row_has_open_comment(&editor.row[row->idx-1]))
 		in_comment = 1;
+
+	/* If the previous row ended inside a triple-quoted string, this
+	 * row starts inside it too.  hl_oc values 2 and 3 track which
+	 * delimiter opened the block (""" or '''). */
+	if (tq && row->idx > 0) {
+		int poc = editor.row[row->idx-1].hl_oc;
+		if (poc == 2) in_tq_string = '"';
+		else if (poc == 3) in_tq_string = '\'';
+	}
 
 	while (*p) {
 		/* Handle single-line comments (1- or 2-char starter). */
@@ -1043,6 +1056,57 @@ void editor_update_syntax(erow *row)
 			in_comment = 1;
 			prev_sep = 0;
 			continue;
+		}
+
+		/* Handle triple-quoted strings (Python """ / ''').  These
+		 * can span multiple lines; the open state is tracked via
+		 * hl_oc (2 or 3) across rows.  Inside a triple-quoted block
+		 * everything is HL_STRING until the closing delimiter. */
+		if (tq) {
+			if (in_tq_string) {
+				row->hl[i] = HL_STRING;
+				if (*p == '\\') {
+					if (i + 1 < row->rsize) row->hl[i+1] = HL_STRING;
+					p += 2; i += 2;
+					prev_sep = 0;
+					continue;
+				}
+				/* Check for closing triple quote. */
+				if (*p == in_tq_string &&
+				    p[1] == in_tq_string && p[2] == in_tq_string) {
+					row->hl[i]   = HL_STRING;
+					if (i + 1 < row->rsize) row->hl[i+1] = HL_STRING;
+					if (i + 2 < row->rsize) row->hl[i+2] = HL_STRING;
+					p += 3; i += 3;
+					in_tq_string = 0;
+					prev_sep = 1;
+					continue;
+				}
+				p++; i++;
+				prev_sep = 0;
+				continue;
+			}
+			/* Check for opening triple quote.  Must come before the
+			 * regular single/double-quote check so that the first
+			 * two quote chars aren't consumed as an empty string. */
+			if (*p == '"' && p[1] == '"' && p[2] == '"') {
+				in_tq_string = '"';
+				row->hl[i]   = HL_STRING;
+				if (i + 1 < row->rsize) row->hl[i+1] = HL_STRING;
+				if (i + 2 < row->rsize) row->hl[i+2] = HL_STRING;
+				p += 3; i += 3;
+				prev_sep = 0;
+				continue;
+			}
+			if (*p == '\'' && p[1] == '\'' && p[2] == '\'') {
+				in_tq_string = '\'';
+				row->hl[i]   = HL_STRING;
+				if (i + 1 < row->rsize) row->hl[i+1] = HL_STRING;
+				if (i + 2 < row->rsize) row->hl[i+2] = HL_STRING;
+				p += 3; i += 3;
+				prev_sep = 0;
+				continue;
+			}
 		}
 
 		/* Handle "" and '' */
@@ -1152,13 +1216,22 @@ void editor_update_syntax(erow *row)
 		p++; i++;
 	}
 
-	/* Propagate syntax change to the next row if the open comment
-	 * state changed. This may recursively affect all the following rows
-	 * in the file. */
-	int oc = editor_row_has_open_comment(row);
-	if (row->hl_oc != oc && row->idx+1 < editor.numrows)
-		editor_update_syntax(&editor.row[row->idx+1]);
-	row->hl_oc = oc;
+	/* Propagate syntax change to the next row if the open state
+	 * changed.  For triple-quote languages the open state comes from
+	 * in_tq_string (still inside a triple-quote block); for C-style
+	 * languages it comes from the open-comment check.  hl_oc encodes
+	 * which:  0 = nothing open, 1 = block comment open,
+	 * 2 = triple-double-quote open, 3 = triple-single-quote open.
+	 * This may recursively affect all the following rows in the file. */
+	{
+		int oc;
+		if (tq && in_tq_string == '"')  oc = 2;
+		else if (tq && in_tq_string == '\'') oc = 3;
+		else oc = editor_row_has_open_comment(row);
+		if (row->hl_oc != oc && row->idx+1 < editor.numrows)
+			editor_update_syntax(&editor.row[row->idx+1]);
+		row->hl_oc = oc;
+	}
 }
 
 /* Emacs default font-lock colors, as exact RGB.
