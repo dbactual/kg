@@ -247,11 +247,14 @@ void editor_indent_rigidly(int n)
 		editor_cursor_goto(r, 0);
 		editor_insert_text_raw(spaces, n);
 	}
-	/* The insertions shifted the mark and point columns right by n; adjust
-	 * both so the region still covers the same text.  Restore point to its
-	 * original row (now with +n col). */
-	editor.mark_col += n;
-	cur_col += n;
+	/* The insertions shifted text right by n on every indented line.
+	 * Adjust the mark and point columns only if their row was actually
+	 * indented — a point sitting at BOL on the excluded (last) line
+	 * should stay put, since nothing was inserted there. */
+	if (editor.mark_row >= r0 && editor.mark_row <= r1)
+		editor.mark_col += n;
+	if (cur_row >= r0 && cur_row <= r1)
+		cur_col += n;
 	editor_cursor_goto(cur_row, cur_col);
 	/* Keep the region highlighted for further TAB presses. */
 	editor.mark_highlight = 1;
