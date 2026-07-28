@@ -120,6 +120,9 @@ static void draw_window_rows(struct abuf *ab,
 	int region_active = 0;
 	int region_s_row = 0, region_s_col = 0;
 	int region_e_row = 0, region_e_col = 0;
+	const char *match_color = editor_syntax_to_color(HL_MATCH);
+	const char *cur_match_color = editor_syntax_to_color(HL_MATCH_CURRENT);
+#define IS_MATCH_COLOR(p) ((p) == match_color || (p) == cur_match_color)
 
 	if (is_active && editor.mark_highlight && editor.mark_set) {
 		int p_row = editor.rowoff + editor.cy;
@@ -251,9 +254,6 @@ static void draw_window_rows(struct abuf *ab,
 				}
 			}
 
-			const char *match_color = editor_syntax_to_color(HL_MATCH);
-			const char *cur_match_color = editor_syntax_to_color(HL_MATCH_CURRENT);
-#define IS_MATCH_COLOR(p) ((p) == match_color || (p) == cur_match_color)
 			for (j = 0; j < len; j++) {
 				int render_col = coloff + j;
 				int want_rev = (render_col >= hi_lo && render_col < hi_hi);
@@ -339,7 +339,14 @@ static void draw_window_rows(struct abuf *ab,
 			if (current_reverse)
 				ab_append(ab, "\x1b[27m", 5);
 		}
-		ab_append(ab, "\x1b[39m", 5);
+		/* If the last rendered character was a search-match highlight,
+		 * its background colour is still active; a plain \x1b[39m
+		 * foreground reset would leave it on, and the \x1b[0K / fill
+		 * below would paint the rest of the line with it.  Full reset. */
+		if (IS_MATCH_COLOR(current_color))
+			ab_append(ab, "\x1b[0m", 4);
+		else
+			ab_append(ab, "\x1b[39m", 5);
 		if (is_full_width) {
 			ab_append(ab, "\x1b[0K", 4);
 		} else {
