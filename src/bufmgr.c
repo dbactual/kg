@@ -690,6 +690,7 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 	int matches = 0, total = 0, flen = 0;
 
 	buf[len] = '\0';
+	picker_panel_open(10);
 	while (1) {
 		const char *names[PICKER_MAX_ENTRIES];
 		int off, i;
@@ -707,11 +708,15 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 
 		for (i = 0; i < matches; i++) names[i] = entries[i].name;
 
-		off = 0;
-		editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, buf);
-		editor_picker_render(msg, sizeof(msg), &off, names, matches, total, sel);
-
-		editor_set_status_message("%s", msg);
+		if (picker_panel_active()) {
+			picker_panel_render(names, matches, sel);
+			editor_set_status_message("%s%s", prompt, buf);
+		} else {
+			off = 0;
+			editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, buf);
+			editor_picker_render(msg, sizeof(msg), &off, names, matches, total, sel);
+			editor_set_status_message("%s", msg);
+		}
 		editor.echo_cursor_col = plen + len + 1;
 		editor_refresh_screen();
 
@@ -727,11 +732,14 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 			}
 			sel = 0;
 		} else if (c == ESC || c == CTRL_G) {
+			picker_panel_close();
 			return prompt_done(-1);
-		} else if (c == ARROW_LEFT || c == CTRL_B) {
+		} else if (c == ARROW_UP || c == CTRL_P ||
+		           c == ARROW_LEFT || c == CTRL_B) {
 			if (matches > 0)
 				sel = (sel - 1 + matches) % matches;
-		} else if (c == ARROW_RIGHT || c == CTRL_F) {
+		} else if (c == ARROW_DOWN || c == CTRL_N ||
+		           c == ARROW_RIGHT || c == CTRL_F) {
 			if (matches > 0)
 				sel = (sel + 1) % matches;
 		} else if (c == ENTER) {
@@ -741,6 +749,7 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 				int new_name_len = (int)strlen(pe->name);
 				int add_slash    = pe->is_dir ? 1 : 0;
 				if (len - flen + new_name_len + add_slash + 1 > bufsize) {
+					picker_panel_close();
 					editor_set_status_message("Path too long");
 					return prompt_done(-1);
 				}
@@ -754,6 +763,7 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 					continue;   /* descend, re-loop */
 				}
 			}
+			picker_panel_close();
 			editor_path_expand_tilde(buf, bufsize);
 			return prompt_done(0);
 		} else if (c == TAB && matches > 0) {
@@ -854,6 +864,8 @@ void buf_select_interactive(int fd)
 		const char *names[MAX_BUFFERS];
 		int match_idx[MAX_BUFFERS];
 
+		picker_panel_open(n);
+
 		while (1) {
 			int matches = 0;
 
@@ -881,10 +893,15 @@ void buf_select_interactive(int fd)
 			}
 			if (sel >= matches) sel = matches > 0 ? matches - 1 : 0;
 
-			off = 0;
-			editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, query);
-			editor_picker_render(msg, sizeof(msg), &off, names, matches, matches, sel);
-			editor_set_status_message("%s", msg);
+			if (picker_panel_active()) {
+				picker_panel_render(names, matches, sel);
+				editor_set_status_message("%s%s", prompt, query);
+			} else {
+				off = 0;
+				editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, query);
+				editor_picker_render(msg, sizeof(msg), &off, names, matches, matches, sel);
+				editor_set_status_message("%s", msg);
+			}
 			editor.echo_cursor_col = plen + qlen + 1;
 			editor_refresh_screen();
 
@@ -892,11 +909,14 @@ void buf_select_interactive(int fd)
 			if (c == DEL_KEY || c == CTRL_H || c == BACKSPACE) {
 				if (qlen > 0) query[--qlen] = '\0';
 				sel = 0;
-			} else if (c == ARROW_RIGHT || c == CTRL_F) {
+			} else if (c == ARROW_DOWN || c == CTRL_N ||
+			           c == ARROW_RIGHT || c == CTRL_F) {
 				if (matches > 0) sel = (sel + 1) % matches;
-			} else if (c == ARROW_LEFT || c == CTRL_B) {
+			} else if (c == ARROW_UP || c == CTRL_P ||
+			           c == ARROW_LEFT || c == CTRL_B) {
 				if (matches > 0) sel = (sel - 1 + matches) % matches;
 			} else if (c == ENTER) {
+				picker_panel_close();
 				editor.echo_cursor_col = 0;
 				editor_set_status_message("");
 				if (matches > 0) {
@@ -909,6 +929,7 @@ void buf_select_interactive(int fd)
 				}
 				return;
 			} else if (c == ESC || c == CTRL_G) {
+				picker_panel_close();
 				editor.echo_cursor_col = 0;
 				editor_set_status_message("");
 				return;

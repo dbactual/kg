@@ -114,7 +114,7 @@ int render_col_to_chars(erow *row, int render_col)
 static void draw_window_rows(struct abuf *ab,
 	int win_y, int win_x, int win_h, int win_w,
 	int rowoff, int coloff, int numrows, erow *rows,
-	int is_active, int is_full_width)
+	int is_active, int is_full_width, int picker_sel)
 {
 	int y, j;
 	int region_active = 0;
@@ -238,7 +238,12 @@ static void draw_window_rows(struct abuf *ab,
 			c  = r->render + coloff;
 			hl = r->hl    + coloff;
 
-			if (region_active && fr >= region_s_row && fr <= region_e_row) {
+			if (picker_sel >= 0 && fr == picker_sel) {
+				/* Vertical completion panel: invert the whole selected
+				 * row (render-col space, half-open to row end). */
+				hi_lo = 0;
+				hi_hi = r->rsize;
+			} else if (region_active && fr >= region_s_row && fr <= region_e_row) {
 				if (editor.rect_mode) {
 					int byte_lo = editor_chars_col_at_visual(r, region_s_col);
 					int byte_hi = editor_chars_col_at_visual(r, region_e_col);
@@ -449,8 +454,19 @@ void editor_refresh_screen(void)
 			coloff  = w->coloff;
 		}
 
-		draw_window_rows(&ab, w->y, w->x, w->h, w->w,
-			rowoff, coloff, numrows, rows, is_active, is_full_width);
+		{
+			/* Invert picker_sel_row only in the completions panel
+			 * window (an inactive window showing *Completions*). */
+			int psel = (!is_active && picker_panel_active() &&
+			            bidx >= 0 && bidx < MAX_BUFFERS &&
+			            buflist[bidx].filename &&
+			            strcmp(buflist[bidx].filename,
+			                   "*Completions*") == 0)
+			           ? picker_sel_row : -1;
+			draw_window_rows(&ab, w->y, w->x, w->h, w->w,
+				rowoff, coloff, numrows, rows, is_active,
+				is_full_width, psel);
+		}
 
 		ml_row = w->y + w->h;
 		{

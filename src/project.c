@@ -206,6 +206,7 @@ void project_find_file(int fd)
 
 	query[0] = '\0';
 	plen = (int)strlen("project find file: ");
+	picker_panel_open(10);   /* sized on first render below */
 
 	while (1) {
 		int matches = 0, shown, total = 0;
@@ -238,10 +239,15 @@ void project_find_file(int fd)
 		shown = matches > max_show ? max_show : matches;
 		if (sel >= shown && shown > 0) sel = shown - 1;
 
-		off = 0;
-		editor_msg_appendf(msg, sizeof(msg), &off, "project find file: %s ", query);
-		editor_picker_render(msg, sizeof(msg), &off, names, shown, total, sel);
-		editor_set_status_message("%s", msg);
+		if (picker_panel_active()) {
+			picker_panel_render(names, shown, sel);
+			editor_set_status_message("project find file: %s", query);
+		} else {
+			off = 0;
+			editor_msg_appendf(msg, sizeof(msg), &off, "project find file: %s ", query);
+			editor_picker_render(msg, sizeof(msg), &off, names, shown, total, sel);
+			editor_set_status_message("%s", msg);
+		}
 		editor.echo_cursor_col = plen + qlen + 1;
 		editor_refresh_screen();
 
@@ -249,11 +255,14 @@ void project_find_file(int fd)
 		if (c == DEL_KEY || c == CTRL_H || c == BACKSPACE) {
 			if (qlen > 0) query[--qlen] = '\0';
 			sel = 0;
-		} else if (c == ARROW_RIGHT || c == CTRL_F || c == TAB) {
+		} else if (c == ARROW_DOWN || c == CTRL_N ||
+		           c == ARROW_RIGHT || c == CTRL_F || c == TAB) {
 			if (shown > 0) sel = (sel + 1) % shown;
-		} else if (c == ARROW_LEFT || c == CTRL_B || c == SHIFT_TAB) {
+		} else if (c == ARROW_UP || c == CTRL_P ||
+		           c == ARROW_LEFT || c == CTRL_B || c == SHIFT_TAB) {
 			if (shown > 0) sel = (sel - 1 + shown) % shown;
 		} else if (c == ENTER) {
+			picker_panel_close();
 			editor.echo_cursor_col = 0;
 			if (shown > 0 && sel >= 0 && sel < shown) {
 				char path[1100];
@@ -266,6 +275,7 @@ void project_find_file(int fd)
 			}
 			return;
 		} else if (c == ESC || c == CTRL_G) {
+			picker_panel_close();
 			editor.echo_cursor_col = 0;
 			editor_set_status_message("");
 			return;

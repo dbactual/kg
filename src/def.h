@@ -448,6 +448,19 @@ void editor_picker_render(char *msg, int msg_size, int *off,
 void editor_msg_appendf(char *msg, int size, int *off, const char *fmt, ...)
 	__attribute__((format(printf, 4, 5)));
 int  autorevert_poll(void);
+
+/* picker.c — vertical completion panel (Vertico-style).
+ * picker_panel_open() splits a bottom window holding a background
+ * completions buffer; picker_panel_render() rewrites its rows on each
+ * keystroke; picker_panel_close() tears the window down.  The panel is
+ * drawn as an inactive window so minibuffer focus (echo-area prompt and
+ * cursor) is never disturbed.  Falls back to the horizontal echo picker
+ * when the screen is too small to split. */
+extern int picker_sel_row;   /* file-row to invert in the panel, -1 = none */
+int  picker_panel_open(int nmatches);
+void picker_panel_render(const char *const *names, int n, int sel);
+void picker_panel_close(void);
+int  picker_panel_active(void);
 void buf_reload_from_disk(void);
 
 /* path.c */

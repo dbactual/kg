@@ -313,6 +313,7 @@ void editor_named_command(int fd)
 	int  sel = 0;   /* index within match_idx[] of the highlighted entry */
 
 	name[0] = '\0';
+	picker_panel_open(10);
 
 	while (1) {
 		int total = 0, shown, first_cmd = -1;
@@ -349,11 +350,15 @@ void editor_named_command(int fd)
 		shown = total > PICKER_MAX_ENTRIES ? PICKER_MAX_ENTRIES : total;
 		if (sel >= shown) sel = shown > 0 ? shown - 1 : 0;
 
-		off = 0;
-		editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, name);
-		editor_picker_render(msg, sizeof(msg), &off, names, shown, total, sel);
-
-		editor_set_status_message("%s", msg);
+		if (picker_panel_active()) {
+			picker_panel_render(names, shown, sel);
+			editor_set_status_message("%s%s", prompt, name);
+		} else {
+			off = 0;
+			editor_msg_appendf(msg, sizeof(msg), &off, "%s%s ", prompt, name);
+			editor_picker_render(msg, sizeof(msg), &off, names, shown, total, sel);
+			editor_set_status_message("%s", msg);
+		}
 		editor.echo_cursor_col = plen + len + 1;
 		editor_refresh_screen();
 
@@ -363,10 +368,12 @@ void editor_named_command(int fd)
 			if (len > 0) name[--len] = '\0';
 			sel = 0;
 		} else if (c == ESC || c == CTRL_G) {
+			picker_panel_close();
 			editor.echo_cursor_col = 0;
 			editor_set_status_message("");
 			return;
 		} else if (c == ENTER) {
+			picker_panel_close();
 			editor.echo_cursor_col = 0;
 			editor_set_status_message("");
 			if (shown > 0 && sel >= 0 && sel < shown) {
@@ -403,9 +410,11 @@ void editor_named_command(int fd)
 				}
 			}
 			sel = 0;
-		} else if (c == ARROW_RIGHT || c == CTRL_F) {
+		} else if (c == ARROW_DOWN || c == CTRL_N ||
+		           c == ARROW_RIGHT || c == CTRL_F) {
 			if (shown > 0) sel = (sel + 1) % shown;
-		} else if (c == ARROW_LEFT || c == CTRL_B) {
+		} else if (c == ARROW_UP || c == CTRL_P ||
+		           c == ARROW_LEFT || c == CTRL_B) {
 			if (shown > 0) sel = (sel - 1 + shown) % shown;
 		} else if (isprint(c) && len < (int)sizeof(name) - 1) {
 			name[len++] = c;
