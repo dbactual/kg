@@ -1260,8 +1260,9 @@ static const char *vc_format_rgb(char *buf, int size, int r, int g, int b, int t
 	return buf;
 }
 
-/* Stable per-token SGR strings (display.c compares/caches by pointer). */
-static char color_seq[16][24];
+/* Stable per-token SGR strings (display.c compares/caches by pointer).
+ * HL_MATCH stores a bg+fg true-colour pair (31 chars), so size for that. */
+static char color_seq[16][40];
 static int color_seq_ready;
 
 static void vc_init_colors(void)
