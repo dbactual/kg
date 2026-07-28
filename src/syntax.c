@@ -1305,7 +1305,7 @@ static void vc_init_colors(void)
 	 */
 	if (tc) {
 		snprintf(color_seq[HL_MATCH], sizeof color_seq[0],
-		         "\x1b[48;2;54;54;80m");            /* dim slate bg only */
+		         "\x1b[48;2;40;70;75m");            /* dim teal bg only */
 		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0],
 		         "\x1b[1;48;2;215;0;215m\x1b[38;2;255;255;255m"); /* vivid magenta + bold */
 	} else {
