@@ -490,6 +490,25 @@ int editor_read_line(int fd, const char *prompt, char *buf, int bufsize)
 				len++;
 			}
 			break;
+		case CTRL_Y:
+			/* Yank (paste) the kill ring into the prompt at point,
+			 * like Emacs minibuffer C-y. */
+			{
+				char *killed = kill_ring_get();
+				if (killed) {
+					int klen = (int)strlen(killed);
+					int avail = bufsize - 1 - len;
+					if (klen > avail) klen = avail;
+					if (klen > 0) {
+						memmove(buf + pos + klen, buf + pos,
+						        len - pos + 1);
+						memcpy(buf + pos, killed, klen);
+						pos += klen;
+						len += klen;
+					}
+				}
+			}
+			break;
 		default:
 			if (c < 256 && isprint(c) && len < bufsize - 1) {
 				memmove(buf + pos + 1, buf + pos, len - pos + 1);
