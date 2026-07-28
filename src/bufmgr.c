@@ -55,7 +55,7 @@ static void buf_save_to_slot(int idx)
 }
 
 /* Restore buflist[idx] into live editor state (and global undostack). */
-static void buf_restore_from_slot(int idx)
+void buf_restore_from_slot(int idx)
 {
 	struct editor_buffer *b = &buflist[idx];
 

@@ -47,18 +47,15 @@ void win_save_active_view(void)
  * the window's cursor/scroll.  Called after win_current changes. */
 static void win_activate_window(void)
 {
-	struct editor_buffer *b;
-	buf_current = winlist[win_current].bufidx;
-	b = &buflist[buf_current];
-	editor.numrows  = b->numrows;
-	editor.row      = b->row;
-	editor.dirty    = b->dirty;
-	editor.filename = b->filename;
-	editor.syntax   = b->syntax;
-	editor.mark_set = b->mark_set;
-	editor.mark_row = b->mark_row;
-	editor.mark_col = b->mark_col;
-	undostack  = b->undostack;
+	/* Restore the FULL per-buffer state, not just the row/cursor fields.
+	 * Restoring only a subset leaks the previous buffer's flags into the
+	 * newly focused one: a read-only special buffer (*Buffer List*,
+	 * *Completions*, vc views) would leave editor.readonly set, and the
+	 * next buf_save_to_slot then writes it into the file buffer's slot,
+	 * making the file read-only.  buf_restore_from_slot covers every
+	 * per-buffer field including readonly, scratch, and the disk-change
+	 * bookkeeping. */
+	buf_restore_from_slot(winlist[win_current].bufidx);
 	win_restore_active_view();
 }
 
