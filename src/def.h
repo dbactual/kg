@@ -299,6 +299,7 @@ struct editor_config {
 	int rect_mode;      /* 1 when the region should render as a rectangle. */
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
 	int proj_prefix;    /* 1 after C-x p, waiting for the project op key. */
+	int keep_region;    /* 1 = next command keeps the region despite dirty. */
 	int desired_visual_col; /* goal column across vertical motion; -1 = unset. */
 	int readonly;       /* If 1, buffer is read-only (editing is blocked). */
 	int last_key;       /* Last key processed, for command repetition logic. */

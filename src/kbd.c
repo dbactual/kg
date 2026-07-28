@@ -794,11 +794,13 @@ void editor_process_keypress(int fd)
 	 * transient-mark-mode convention.  The filename guard avoids
 	 * stomping the highlight that was just restored from a buffer slot
 	 * when the user switched buffers (C-x b, C-x C-f). */
-	if (editor.filename == fname_before && editor.dirty != dirty_before) {
+	if (editor.filename == fname_before && editor.dirty != dirty_before
+	    && !editor.keep_region) {
 		editor.mark_highlight = 0;
 		editor.rect_mode = 0;
 		editor_snap_cx_to_row();
 	}
+	editor.keep_region = 0;
 
 	/* Tear down a shift-selected region after the command has had its
 	 * say.  Done last so C-w / M-w / C-x C-x can still see the mark

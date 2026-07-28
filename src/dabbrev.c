@@ -250,5 +250,8 @@ void editor_indent_rigidly(int n)
 	editor_cursor_goto(cur_row, cur_col);
 	/* Keep the region highlighted for further TAB presses. */
 	editor.mark_highlight = 1;
+	/* Tell the post-command deactivation logic to leave the region
+	 * alone: indent-rigidly intentionally keeps it for repeated TAB. */
+	editor.keep_region = 1;
 	editor_set_status_message("Region indented");
 }
