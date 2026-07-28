@@ -406,6 +406,11 @@ int editor_read_key(int fd)
 	}
 
 	key = (c == ESC) ? parse_escape(fd) : (unsigned char)c;
+	/* Normalise LF (byte 10) to ENTER (CR).  Terminal paste on macOS
+	 * sends LF line endings; without this the newlines are silently
+	 * dropped by the default-case filter.  Ctrl-J sends LF and is
+	 * newline in Emacs, so the mapping is correct either way. */
+	if (key == 10) key = ENTER;
 	macro_on_key(key);
 	return key;
 }
@@ -463,6 +468,7 @@ int editor_read_key_idle(int fd)
 	}
 
 	key = (c == ESC) ? parse_escape(fd) : (unsigned char)c;
+	if (key == 10) key = ENTER;
 	macro_on_key(key);
 	return key;
 }
