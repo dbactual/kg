@@ -460,6 +460,10 @@ void editor_insert_newline(void)
 		row->size = filecol;
 		editor_update_row(row);
 	}
+	/* Push an explicit boundary after the newline so text typed on
+	 * the new line forms its own undo group -- Emacs treats newline
+	 * as an undo boundary. */
+	undo_push_boundary();
 fixcursor:
 	if (editor.cy == editor.screenrows - 1) {
 		editor.rowoff++;
