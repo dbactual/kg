@@ -124,15 +124,19 @@ static int isearch_handoff_key(int c)
 		editor_move_cursor(END_KEY);
 		break;
 	case CTRL_B:
+	case ARROW_LEFT:
 		editor_move_cursor(ARROW_LEFT);
 		break;
 	case CTRL_F:
+	case ARROW_RIGHT:
 		editor_move_cursor(ARROW_RIGHT);
 		break;
 	case CTRL_N:
+	case ARROW_DOWN:
 		editor_move_cursor(ARROW_DOWN);
 		break;
 	case CTRL_P:
+	case ARROW_UP:
 		editor_move_cursor(ARROW_UP);
 		break;
 	case CTRL_D:
@@ -219,9 +223,9 @@ void editor_find(int fd, int direction)
 			RESTORE_HL;
 			editor_set_status_message("");
 			return;
-		} else if (c == ARROW_RIGHT || c == ARROW_DOWN || c == CTRL_S) {
+		} else if (c == CTRL_S) {
 			direction = find_next = 1;
-		} else if (c == ARROW_LEFT || c == ARROW_UP || c == CTRL_R) {
+		} else if (c == CTRL_R) {
 			direction = find_next = -1;
 		} else if (isprint(c)) {
 			if (qlen < KILO_QUERY_LEN) {
