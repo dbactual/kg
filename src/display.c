@@ -252,6 +252,8 @@ static void draw_window_rows(struct abuf *ab,
 			}
 
 			const char *match_color = editor_syntax_to_color(HL_MATCH);
+			const char *cur_match_color = editor_syntax_to_color(HL_MATCH_CURRENT);
+#define IS_MATCH_COLOR(p) ((p) == match_color || (p) == cur_match_color)
 			for (j = 0; j < len; j++) {
 				int render_col = coloff + j;
 				int want_rev = (render_col >= hi_lo && render_col < hi_hi);
@@ -277,11 +279,11 @@ static void draw_window_rows(struct abuf *ab,
 					current_reverse = 0;
 				} else if (hl[j] == HL_NORMAL) {
 					if (current_color) {
-						/* HL_MATCH sets a background colour; a plain
-						 * foreground reset (\x1b[39m) would leave it
-						 * active, so do a full reset when leaving the
-						 * match highlight. */
-						if (current_color == match_color) {
+						/* HL_MATCH/HL_MATCH_CURRENT set a background
+						 * colour; a plain foreground reset (\x1b[39m)
+						 * would leave it active, so do a full reset
+						 * when leaving a match highlight. */
+						if (IS_MATCH_COLOR(current_color)) {
 							ab_append(ab, "\x1b[0m", 4);
 							current_reverse = 0;
 						} else {
@@ -293,7 +295,7 @@ static void draw_window_rows(struct abuf *ab,
 				} else {
 					const char *color = editor_syntax_to_color(hl[j]);
 					if (color != current_color) {
-						if (current_color == match_color) {
+						if (IS_MATCH_COLOR(current_color)) {
 							ab_append(ab, "\x1b[0m", 4);
 							current_reverse = 0;
 						}

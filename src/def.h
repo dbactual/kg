@@ -84,7 +84,8 @@ int tty_query_background(int fd);
 #define HL_KEYWORD2 5
 #define HL_STRING 6
 #define HL_NUMBER 7
-#define HL_MATCH 8      /* Search match. */
+#define HL_MATCH 8      /* Search match (other occurrences). */
+#define HL_MATCH_CURRENT 9 /* The active isearch match. */
 
 #define HL_HIGHLIGHT_STRINGS (1<<0)
 #define HL_HIGHLIGHT_NUMBERS (1<<1)

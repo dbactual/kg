@@ -1297,12 +1297,18 @@ static void vc_init_colors(void)
 	snprintf(color_seq[HL_NUMBER], sizeof color_seq[0], "\x1b[37m");  /* default-ish */
 	/* Search match: Emacs' isearch face is a magenta/pink background
 	 * with white foreground.  Use true-colour when available, else the
-	 * 8-color magenta+white fallback.  */
-	if (tc)
+	 * 8-color magenta+white fallback.
+	 *   HL_MATCH          — lazy-highlight: dimmer pink, for other hits
+	 *   HL_MATCH_CURRENT  — the active match: stronger magenta + bold */
+	if (tc) {
 		snprintf(color_seq[HL_MATCH], sizeof color_seq[0],
-		         "\x1b[48;2;215;0;215m\x1b[38;2;255;255;255m"); /* magenta bg, white fg */
-	else
+		         "\x1b[48;2;180;100;200m\x1b[38;2;255;255;255m"); /* soft orchid bg */
+		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0],
+		         "\x1b[1;48;2;215;0;215m\x1b[38;2;255;255;255m"); /* bright magenta + bold */
+	} else {
 		snprintf(color_seq[HL_MATCH], sizeof color_seq[0], "\x1b[45;37m");
+		snprintf(color_seq[HL_MATCH_CURRENT], sizeof color_seq[0], "\x1b[1;45;37m");
+	}
 	snprintf(color_seq[HL_NORMAL], sizeof color_seq[0], "\x1b[37m");  /* white       */
 
 	color_seq_ready = 1;
