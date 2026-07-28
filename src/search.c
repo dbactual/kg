@@ -193,6 +193,18 @@ static int isearch_handoff_key(int c)
 	case ALT_GT:
 		editor_move_to_end();
 		break;
+	case PAGE_UP:
+	case PAGE_DOWN:
+		if (c == PAGE_UP && editor.cy != 0)
+			editor.cy = 0;
+		else if (c == PAGE_DOWN && editor.cy != editor.screenrows - 1)
+			editor.cy = editor.screenrows - 1;
+		{
+			int times = editor.screenrows;
+			while (times--)
+				editor_move_cursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+		}
+		break;
 	case ALT_B:
 	case CTRL_ARROW_LEFT:
 		editor_move_word_backward();
