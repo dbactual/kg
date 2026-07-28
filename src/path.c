@@ -38,6 +38,9 @@ static int path_entry_cmp(const void *a, const void *b)
 		int rb = editor_picker_match_rank(pb->name, path_cmp_needle);
 		if (ra != rb) return ra - rb;
 	}
+	/* Directories before plain files within the same rank, then
+	 * alphabetical — matches ido/Vertico find-file presentation. */
+	if (pa->is_dir != pb->is_dir) return pb->is_dir - pa->is_dir;
 	return strcmp(pa->name, pb->name);
 }
 

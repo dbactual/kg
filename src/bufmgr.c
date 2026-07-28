@@ -692,6 +692,11 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 	buf[len] = '\0';
 	picker_panel_open(10);
 	while (1) {
+		/* Display names: directories get a trailing '/' in the list.
+		 * Static so the pointers stay valid through the render call;
+		 * entries[].name itself is never modified (the completion
+		 * logic keys off it). */
+		static char dispnames[PICKER_MAX_ENTRIES][PATH_ENTRY_NAME_MAX + 2];
 		const char *names[PICKER_MAX_ENTRIES];
 		int off, i;
 
@@ -706,7 +711,15 @@ int editor_read_line_path(int fd, const char *prompt, char *buf, int bufsize)
 
 		push_open_files_back(entries, matches);
 
-		for (i = 0; i < matches; i++) names[i] = entries[i].name;
+		for (i = 0; i < matches; i++) {
+			if (entries[i].is_dir) {
+				snprintf(dispnames[i], sizeof dispnames[i],
+				         "%s/", entries[i].name);
+				names[i] = dispnames[i];
+			} else {
+				names[i] = entries[i].name;
+			}
+		}
 
 		if (picker_panel_active()) {
 			picker_panel_render(names, matches, sel);

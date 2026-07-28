@@ -268,6 +268,30 @@ static void test_substring_matching(void)
 	teardown();
 }
 
+/* Directories sort before plain files within the same match rank,
+ * then alphabetical — the ido/Vertico find-file presentation. */
+static void test_dirs_sort_first(void)
+{
+	struct path_entry entries[8];
+	char lcp[256];
+	int n;
+
+	setup();
+	/* All of these match "fo": file foobar, file foobaz, file foe.
+	 * Add a directory "fodir" — it must come before all three files
+	 * even though alphabetically it sits between foe and foobar. */
+	mkscratchdir("fodir");
+
+	n = editor_path_complete_entries(scratch, "fo", entries, 8, lcp, sizeof(lcp));
+	CHECK(n == 4);
+	CHECK(entries[0].is_dir == 1);
+	CHECK(strcmp(entries[0].name, "fodir") == 0);
+	CHECK(strcmp(entries[1].name, "foe") == 0);
+	CHECK(strcmp(entries[2].name, "foobar") == 0);
+	CHECK(strcmp(entries[3].name, "foobaz") == 0);
+	teardown();
+}
+
 int main(void)
 {
 	RUN(test_multiple_matches_lcp);
@@ -281,5 +305,6 @@ int main(void)
 	RUN(test_max_clamp);
 	RUN(test_picker_match_rank);
 	RUN(test_substring_matching);
+	RUN(test_dirs_sort_first);
 	return test_summary();
 }
