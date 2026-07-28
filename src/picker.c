@@ -151,6 +151,11 @@ void picker_panel_render(const char *const *names, int n, int sel)
 		if (sel < 0) sel = 0;
 		if (sel >= n) sel = n - 1;
 		picker_sel_row = sel;
+		/* Highlight the selected row with the isearch match face
+		 * (dim teal bg) so the picker selection reads the same as
+		 * a search hit; the text keeps its own foreground colour. */
+		if (b->row[sel].hl && b->row[sel].size > 0)
+			memset(b->row[sel].hl, HL_MATCH, b->row[sel].size);
 	}
 
 	/* Keep the selected row visible in the panel's viewport. */
