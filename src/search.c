@@ -14,6 +14,10 @@
 
 /* Smart case: an all-lowercase query folds case, a query with any uppercase
  * letter searches case-sensitively, like GNU Emacs. */
+/* The most recent successfully completed incremental-search query.
+ * C-s/C-r with an empty prompt recalls this, like GNU Emacs. */
+static char last_search_query[KILO_QUERY_LEN + 1] = "";
+
 static int query_has_upper(const char *q, int qlen)
 {
 	int i;
@@ -220,12 +224,24 @@ void editor_find(int fd, int direction)
 				editor.cx = saved_cx; editor.cy = saved_cy;
 				editor.coloff = saved_coloff; editor.rowoff = saved_rowoff;
 			}
+			if (c == ENTER && qlen > 0)
+				strcpy(last_search_query, query);
 			RESTORE_HL;
 			editor_set_status_message("");
 			return;
 		} else if (c == CTRL_S) {
+			if (qlen == 0 && last_search_query[0]) {
+				strcpy(query, last_search_query);
+				qlen = (int)strlen(query);
+				last_match_row = last_match_col = -1;
+			}
 			direction = find_next = 1;
 		} else if (c == CTRL_R) {
+			if (qlen == 0 && last_search_query[0]) {
+				strcpy(query, last_search_query);
+				qlen = (int)strlen(query);
+				last_match_row = last_match_col = -1;
+			}
 			direction = find_next = -1;
 		} else if (isprint(c)) {
 			if (qlen < KILO_QUERY_LEN) {
@@ -235,6 +251,8 @@ void editor_find(int fd, int direction)
 				find_next = direction;
 			}
 		} else if (isearch_handoff_key(c)) {
+			if (qlen > 0)
+				strcpy(last_search_query, query);
 			RESTORE_HL;
 			return;
 		}
