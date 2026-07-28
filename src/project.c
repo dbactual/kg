@@ -257,7 +257,7 @@ void project_find_file(int fd)
 			editor.echo_cursor_col = 0;
 			if (shown > 0 && sel >= 0 && sel < shown) {
 				char path[1100];
-				snprintf(path, sizeof path, "%s/%s", rootp, names[idx[sel]]);
+				snprintf(path, sizeof path, "%s/%s", rootp, names[sel]);
 				buf_open_path(path, 0);
 				editor_goto_line_direct(1, 1);
 				editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");

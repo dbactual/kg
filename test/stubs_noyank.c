@@ -26,3 +26,8 @@ int win_total_cols = 80;
 
 /* No-op stub for display function not under test */
 void editor_set_status_message(const char *fmt, ...) { (void)fmt; }
+
+/* Weak stub for shell function referenced by yank.c copy/kill paths.
+ * shell.o provides the real implementation when linked (test_shell). */
+__attribute__((weak))
+void copy_to_clipboard(const char *text, int len) { (void)text; (void)len; }
