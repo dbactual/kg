@@ -202,6 +202,20 @@ static const char *xref_patterns_JS[] = {
 	NULL
 };
 
+/* Go: plain funcs, generic funcs (Name[T any](...)), methods with a
+ * receiver (func (r *T) Name(...)), and type declarations.  The generic
+ * fallback misses all of these because the name is followed by '[' or
+ * preceded by the receiver group, not '('. */
+static const char *xref_patterns_Go[] = {
+	"%s* func %w(",          /* func Name(...) */
+	"%s* func %w[",          /* func Name[T any](...)  (generics) */
+	"%s* func %S %w(",       /* func (r *T) Name(...)  (method) */
+	"%s* func %S %w[",       /* func (r *T) Name[T ...](...) */
+	"%s* type %w ",          /* type Name struct / interface / ... */
+	"%s* type %w{",
+	NULL
+};
+
 /* Pick the pattern list for the current buffer's syntax name. */
 static const char **xref_patterns_for(const char *lang)
 {
@@ -211,6 +225,7 @@ static const char **xref_patterns_for(const char *lang)
 	if (!strcmp(lang, "Python")) return xref_patterns_Python;
 	if (!strcmp(lang, "Shell")) return xref_patterns_Shell;
 	if (!strcmp(lang, "Rust"))  return xref_patterns_Rust;
+	if (!strcmp(lang, "Go"))    return xref_patterns_Go;
 	if (!strcmp(lang, "Java") || !strcmp(lang, "TypeScript") ||
 	    !strcmp(lang, "Swift") || !strcmp(lang, "Dart"))
 		return xref_patterns_Java;
@@ -236,9 +251,22 @@ static int xref_match_pattern(const char *pat, const char *s, int len,
 			char c = pat[j+1];
 			j += 2;
 			if (c == 's') {
-				/* one or more whitespace */
-				if (i >= len || !isspace((unsigned char)s[i])) return 0;
-				while (i < len && isspace((unsigned char)s[i])) i++;
+				/* "%s*" (whitespace then a literal '*') is the idiom the
+				 * patterns use for "zero or more leading whitespace" —
+				 * treat it as such so column-0 definitions match.  A bare
+				 * "%s" still means one or more whitespace. */
+				if (pat[j] == '*') {
+					j++;   /* consume the '*' */
+					while (i < len && isspace((unsigned char)s[i])) i++;
+					/* A single space literal right after "%s*" is part of
+					 * the leading-whitespace run (the patterns are written
+					 * "%s* keyword"); skip it too so column-0 definitions
+					 * match. */
+					if (pat[j] == ' ') j++;
+				} else {
+					if (i >= len || !isspace((unsigned char)s[i])) return 0;
+					while (i < len && isspace((unsigned char)s[i])) i++;
+				}
 			} else if (c == 'w') {
 				/* the identifier, with a word boundary after */
 				if (i + nlen > len) return 0;
@@ -265,14 +293,14 @@ static int xref_match_pattern(const char *pat, const char *s, int len,
 					if (k + nlen < len &&
 					    (isalnum((unsigned char)s[k+nlen]) || s[k+nlen] == '_'))
 						continue;
-					/* try the tail from here; tail is e.g. "%w(" — but %w
-					 * already consumed by the scan, so match the literal
-					 * part after %w in the tail. */
+					/* try the tail from here; tail is e.g. " %w(" — the
+					 * space and %w are already consumed by the scan, so
+					 * skip both before matching the literal part. */
 					{
 						const char *t = tail;
 						int ii = k + nlen;
-						/* skip %w in tail (we already matched name) */
-						if (t[0] == '%' && t[1] == 'w') t += 2;
+						if (t[0] == ' ') t++;            /* the "%S %w" separator */
+						if (t[0] == '%' && t[1] == 'w') t += 2;   /* skip %w */
 						if (xref_match_pattern(t, s + ii, len - ii, name))
 							return 1;
 					}
