@@ -534,6 +534,7 @@ void win_save_active_view(void);
 void win_restore_active_view(void);
 void win_split_horizontal(void);
 int  win_split_bottom(int new_h);
+int  win_unsplit_bottom(int slot);
 void win_focus(int idx);
 void win_fill_screen(struct editor_window *w);
 void win_sync_view(void);

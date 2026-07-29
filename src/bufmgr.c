@@ -1505,10 +1505,15 @@ static int buf_ibuffer_close_panel(void)
 			break;
 		}
 	}
-	winlist[ibuf_win].active = 0;
-	win_count--;
-	win_fill_screen(&winlist[win_current]);
-	win_sync_view();
+	/* Return the panel's rows to the window it was carved from,
+	 * preserving any pre-existing split layout; fall back to a
+	 * full-screen reclaim only when the layout no longer tiles. */
+	if (!win_unsplit_bottom(ibuf_win)) {
+		winlist[ibuf_win].active = 0;
+		if (win_count > 1) win_count--;
+		win_fill_screen(&winlist[win_current]);
+		win_sync_view();
+	}
 	return 1;
 }
 

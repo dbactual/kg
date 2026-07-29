@@ -148,6 +148,42 @@ int win_split_bottom(int new_h)
 	return slot;
 }
 
+/* Reverse win_split_bottom(): deactivate window `slot` (a bottom panel)
+ * and return its rows to the window directly above that shares its full
+ * width.  Geometry-only -- does not touch focus or buffer state, so it
+ * is safe for transient panels (completion picker, buffer list) whose
+ * windows are never the user's real focus.  Returns 1 on success, 0 if
+ * the panel's space could not be re-absorbed (caller should fall back
+ * to win_fill_screen for the single-window case). */
+int win_unsplit_bottom(int slot)
+{
+	struct editor_window *panel;
+	int i;
+
+	if (slot < 0 || slot >= MAX_WINDOWS || !winlist[slot].active)
+		return 0;
+	if (win_count <= 1)
+		return 0;
+
+	panel = &winlist[slot];
+	for (i = 0; i < MAX_WINDOWS; i++) {
+		struct editor_window *p = &winlist[i];
+
+		if (!p->active || i == slot)
+			continue;
+		/* The window directly above, spanning the same columns. */
+		if (p->y + p->h + 1 == panel->y &&
+		    p->x == panel->x && p->w == panel->w) {
+			p->h += panel->h + 1;   /* +1 for the mode line row */
+			panel->active = 0;
+			win_count--;
+			win_sync_view();
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /* Split the current window (C-x 2): it keeps the upper half, a new
  * window showing the same buffer takes the lower half.  Other windows
  * are not disturbed. */

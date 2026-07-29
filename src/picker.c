@@ -188,11 +188,16 @@ void picker_panel_close(void)
 
 	if (picker_win >= 0 && picker_win < MAX_WINDOWS &&
 	    winlist[picker_win].active) {
-		winlist[picker_win].active = 0;
-		win_count--;
-		/* Re-expand the focused window to reclaim the panel's rows. */
-		win_fill_screen(&winlist[win_current]);
-		win_sync_view();
+		/* Return the panel's rows to the window it was carved from,
+		 * preserving any pre-existing split layout.  Fall back to a
+		 * full-screen reclaim only when the layout no longer tiles
+		 * (shouldn't happen for a modal picker). */
+		if (!win_unsplit_bottom(picker_win)) {
+			winlist[picker_win].active = 0;
+			if (win_count > 1) win_count--;
+			win_fill_screen(&winlist[win_current]);
+			win_sync_view();
+		}
 	}
 	picker_win = -1;
 	picker_sel_row = -1;
