@@ -1,0 +1,19 @@
+name: string-rectangle-basic-oracle
+filename: strrect.txt
+initial: |
+  fooX1
+  barY2
+  bazQ3
+oracle: emacs
+keys:
+  - C-SPC
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "zz"
+  - RET

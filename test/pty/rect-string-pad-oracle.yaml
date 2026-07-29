@@ -1,0 +1,20 @@
+name: string-rectangle-pad-oracle
+filename: strrect-pad.txt
+initial: |
+  abcdef
+  ab
+  abcdef
+oracle: emacs
+keys:
+  - C-f
+  - C-f
+  - C-SPC
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "XY"
+  - RET

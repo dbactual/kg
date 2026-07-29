@@ -112,7 +112,7 @@ Each entry lists the key bindings or commands affected.
 - Visual mark mode: the region renders in reverse video as you move
 - Shift-select and the CUA clipboard trio (Shift-Delete / Ctrl-Insert
   / Shift-Insert) alongside the Emacs C-w / M-w / C-y
-- Rectangle commands (C-x SPC, C-x r {k,y,d,c})
+- Rectangle commands (C-x SPC, C-x r {k,y,d,c,t})
 - Incremental search and query-replace (M-%)
 - Multi-level undo (C-_)
 - Paragraph reflow to 72 columns (M-q)

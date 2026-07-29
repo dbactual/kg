@@ -182,6 +182,7 @@ void editor_process_keypress(int fd)
 		case 'k': case CTRL_K: editor_kill_rect();   break;
 		case 'd':              editor_delete_rect(); break;
 		case 'c':              editor_clear_rect();  break;
+		case 't':              editor_string_rect(fd); break;
 		case 'y': case CTRL_Y: editor_yank_rect();   break;
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-x r %c is undefined", c); break;

@@ -1,0 +1,26 @@
+name: string-rectangle-pads-short-row
+filename: strrect-pad.txt
+initial: |
+  abcdef
+  ab
+  abcdef
+keys:
+  # rectangle rows 0-2, cols [2,4): middle row "ab" is too short and
+  # must be padded with spaces so the string lands at column 2.
+  # Mark goes at (0,2); point ends at (2,4).
+  - C-f
+  - C-f
+  - C-SPC
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "XY"
+  - RET
+expected_saved: |
+  abXYef
+  abXY
+  abXYef

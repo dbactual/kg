@@ -1,0 +1,24 @@
+name: string-rectangle-undo
+filename: strrect-undo.txt
+initial: |
+  fooX1
+  barY2
+  bazQ3
+keys:
+  - C-SPC
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "zz"
+  - RET
+  # single undo restores all three rows
+  - C-_
+expected_saved: |
+  fooX1
+  barY2
+  bazQ3

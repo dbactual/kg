@@ -1,0 +1,23 @@
+name: string-rectangle-basic
+filename: strrect.txt
+initial: |
+  fooX1
+  barY2
+  bazQ3
+keys:
+  # mark at (0,0), point at row 2 col 3: rectangle rows 0-2, cols [0,3)
+  - C-SPC
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "zz"
+  - RET
+expected_saved: |
+  zzX1
+  zzY2
+  zzQ3

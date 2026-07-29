@@ -1,0 +1,20 @@
+name: string-rectangle-cancel-keeps-buffer
+filename: strrect-cancel.txt
+initial: |
+  fooX1
+  barY2
+keys:
+  - C-SPC
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - "zz"
+  # cancel at the prompt: buffer must be unchanged
+  - C-g
+expected_saved: |
+  fooX1
+  barY2

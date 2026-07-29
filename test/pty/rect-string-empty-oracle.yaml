@@ -1,0 +1,16 @@
+name: string-rectangle-empty-oracle
+filename: strrect-del.txt
+initial: |
+  fooX1
+  barY2
+oracle: emacs
+keys:
+  - C-SPC
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - RET

@@ -1,0 +1,19 @@
+name: string-rectangle-empty-deletes
+filename: strrect-del.txt
+initial: |
+  fooX1
+  barY2
+keys:
+  # empty string rectangle = delete-rectangle (Emacs behaviour)
+  - C-SPC
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-x
+  - r
+  - t
+  - RET
+expected_saved: |
+  X1
+  Y2

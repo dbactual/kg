@@ -45,7 +45,7 @@ const char *kg_help_lines[] = {
 	"│ S-arrow    extend       │ C-x r y  yank rect      │ M-arr    word/para      │",
 	"│ C-S-arrow  word/para    │ C-x r d  delete rect    │ M-S-arr  resize window  │",
 	"│ S-PgUp/Dn  extend page  │ C-x r c  clear rect     │ C-x +    balance windows│",
-	"│ C-w/S-Del  cut          │                         │ C-x 0/1  del wnd/others │",
+	"│ C-w/S-Del  cut          │ C-x r t  string rect    │ C-x 0/1  del wnd/others │",
 	"│ M-w/C-Ins  copy         │ MACROS                  │ C-s/C-r  search fwd/bk  │",
 	"│ C-y/S-Ins  paste        │ C-x (/F3 begin macro    │ M-%      query replace  │",
 	"│ DEL        del region   │ C-x )/F4 end macro      │ C-l      recenter       │",

@@ -724,6 +724,7 @@ void editor_kill_rect(void);
 void editor_delete_rect(void);
 void editor_clear_rect(void);
 void editor_yank_rect(void);
+void editor_string_rect(int fd);
 void rect_kill_ring_free(void);
 void editor_kill_region(void);
 void editor_copy_region(void);

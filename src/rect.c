@@ -275,6 +275,75 @@ void editor_clear_rect(void)
 	editor_set_status_message("Rectangle cleared");
 }
 
+/* C-x r t: string-rectangle.  Prompt for a string and replace each
+ * row's chars in the visual [s_vcol, e_vcol) span with it.  Unlike
+ * clear-rect the rectangle's width is NOT preserved -- the rows change
+ * length to fit the string.  Rows shorter than s_vcol are padded with
+ * spaces so the string lands at the correct visual column.  An empty
+ * string deletes the rectangle (Emacs behaviour). */
+void editor_string_rect(int fd)
+{
+	int s_row, s_vcol, e_row, e_vcol;
+	int orig_numrows;
+	int s_row_byte_lo;
+	char *snap;
+	int snap_len;
+	char text[256];
+	int tlen;
+	int r;
+
+	if (!rect_bounds(&s_row, &s_vcol, &e_row, &e_vcol))
+		return;
+
+	text[0] = '\0';
+	if (editor_read_line(fd, "String rectangle: ", text, sizeof(text)) < 0)
+		return;   /* cancelled -- region stays active */
+	tlen = (int)strlen(text);
+
+	/* Empty string = delete-rectangle. */
+	if (tlen == 0) {
+		rect_kill_or_delete(0);
+		return;
+	}
+
+	orig_numrows = editor.numrows;
+	snap = rect_snapshot_rows(s_row, e_row + 1, &snap_len);
+
+	if (s_row < editor.numrows) {
+		int hi_unused;
+		rect_row_byte_range(&editor.row[s_row], s_vcol, s_vcol,
+				    &s_row_byte_lo, &hi_unused);
+	} else {
+		s_row_byte_lo = 0;
+	}
+
+	undo_push(UNDO_RECT_OVERWRITE, s_row, s_row_byte_lo, orig_numrows,
+		  snap ? snap : (char *)"", snap_len);
+	free(snap);
+
+	suppress_undo = 1;
+	for (r = s_row; r <= e_row && r < editor.numrows; r++) {
+		erow *row = &editor.row[r];
+		int lo, hi, i;
+
+		/* Pad with spaces until row's visual width reaches s_vcol. */
+		while (editor_visual_col(row, row->size) < s_vcol)
+			editor_row_insert_char(row, row->size, ' ');
+
+		rect_row_byte_range(row, s_vcol, e_vcol, &lo, &hi);
+		for (i = hi - 1; i >= lo; i--)
+			editor_row_del_char(row, i);
+		for (i = 0; i < tlen; i++)
+			editor_row_insert_char(row, lo + i, text[i]);
+	}
+	suppress_undo = 0;
+
+	editor_cursor_goto(s_row, s_row_byte_lo);
+	rect_deactivate();
+	editor.dirty++;
+	editor_set_status_message("String rectangle");
+}
+
 /* Insert the last killed rectangle at point, padding short target rows
  * with spaces and appending new rows when the buffer is too short. */
 void editor_yank_rect(void)
