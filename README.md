@@ -119,7 +119,9 @@ Each entry lists the key bindings or commands affected.
 - Keyboard macros (C-x ( / C-x ) / C-x e)
 - M-x, C-x C-f, and C-x b all share an ido-style picker: substring
   matching, already-open files pushed to the back of the file picker
-- Detects external changes to open files; optional auto-revert
+- Detects external changes to open files; auto-revert is on by default
+  (M-x global-auto-revert-mode toggles; modified buffers are never
+  clobbered — they show (changed) in the mode line instead)
 - Shell commands (M-!) and pipe-region-through-command (M-|)
 - Comment-dwim (M-;)
 - Word-case bindings (M-u / M-l / M-c)
