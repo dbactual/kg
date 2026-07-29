@@ -1,0 +1,17 @@
+name: mc-mark-all-self-insert
+filename: mc.txt
+initial: |
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # cursor on "foo" at top; C-c m a marks all three occurrences, then
+  # typing X inserts at every cursor (start of each foo).
+  - C-c
+  - m
+  - a
+  - X
+expected_saved: |
+  Xfoo bar
+  Xfoo baz
+  Xfoo qux

@@ -113,6 +113,11 @@ Each entry lists the key bindings or commands affected.
 - Shift-select and the CUA clipboard trio (Shift-Delete / Ctrl-Insert
   / Shift-Insert) alongside the Emacs C-w / M-w / C-y
 - Rectangle commands (C-x SPC, C-x r {k,y,d,c,t})
+- Multiple cursors: parallel editing at several positions (C-c m {n,a}
+marks next/all occurrences of the word at point, C-c m {j,k} adds a
+cursor on the line below/above, C-g clears).  Typing, Backspace, RET,
+movement, and C-y yank apply at every cursor; one C-_ undoes the whole
+stroke.  See docs/plans/multiple-cursors.md.
 - Incremental search and query-replace (M-%)
 - Multi-level undo (C-_)
 - Paragraph reflow to 72 columns (M-q)

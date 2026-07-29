@@ -1,0 +1,21 @@
+name: mc-cursor-below-insert
+filename: mc-below.txt
+initial: |
+  aaa
+  bbb
+  ccc
+keys:
+  # C-c m j twice adds cursors on the two lines below, same column (0).
+  - C-c
+  - m
+  - j
+  - C-c
+  - m
+  - j
+  - X
+expected_saved: |
+  Xaaa
+  Xbbb
+  Xccc
+expected_screen_contains:
+  - "MC:3"

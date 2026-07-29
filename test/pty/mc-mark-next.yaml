@@ -1,0 +1,21 @@
+name: mc-mark-next-twice
+filename: mc-next.txt
+initial: |
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # C-c m n twice marks the 2nd and 3rd foo, walking forward.
+  - C-c
+  - m
+  - n
+  - C-c
+  - m
+  - n
+  - X
+expected_saved: |
+  Xfoo bar
+  Xfoo baz
+  Xfoo qux
+expected_screen_contains:
+  - "MC:3"

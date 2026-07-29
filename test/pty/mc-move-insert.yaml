@@ -1,0 +1,19 @@
+name: mc-parallel-move-and-insert
+filename: mc-move.txt
+initial: |
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # mark all foos, move right 3 (end of each foo), insert !
+  - C-c
+  - m
+  - a
+  - C-f
+  - C-f
+  - C-f
+  - "!"
+expected_saved: |
+  foo! bar
+  foo! baz
+  foo! qux

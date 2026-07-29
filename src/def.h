@@ -76,6 +76,8 @@ static inline void tty_write(const void *buf, size_t n)
 int tty_query_background(int fd);
 
 /* Syntax highlight types */
+#define MC_MAX 64         /* Maximum number of secondary cursors. */
+
 #define HL_NORMAL 0
 #define HL_NONPRINT 1
 #define HL_COMMENT 2   /* Single line comment. */
@@ -290,6 +292,7 @@ struct editor_config {
 	struct editor_syntax *syntax;    /* Current syntax highlight, or NULL. */
 	int cx_prefix;      /* Set to 1 when C-x was pressed, waiting for next key. */
 	int cc_prefix;      /* Set to 1 when C-c was pressed, waiting for next key. */
+	int mc_prefix;      /* Set to 1 after C-c m, waiting for the MC op key. */
 	int prefix_pending; /* Set while accumulating a C-u numeric argument. */
 	int prefix_arg;     /* The numeric argument under construction. */
 	int prefix_no_digits; /* 1 between C-u and the first digit, so a digit replaces 4. */
@@ -321,6 +324,9 @@ struct editor_config {
 	int backed_up;      /* 1 once a foo~ backup was made this visit. */
 	int scratch;        /* 1 = buffer not visiting a file; C-x C-s prompts. */
 	int fill_column;    /* Column M-q reflows to; set with C-x f. */
+	int mc_count;       /* Number of secondary cursors (0 = MC off). */
+	int mc_row[MC_MAX]; /* Secondary cursor rows (buffer-absolute). */
+	int mc_col[MC_MAX]; /* Secondary cursor byte columns. */
 };
 
 /* Append buffer for efficient screen rendering */
@@ -355,6 +361,7 @@ enum undo_type {
 	UNDO_YANK_POP,    /* M-y yank-pop: replace last yank with older entry */
 	UNDO_REFLOW_PARA, /* M-q paragraph reflow */
 	UNDO_RECT_OVERWRITE, /* Rectangle kill/delete/clear/yank: restore rows */
+	UNDO_MC_CURSORS,  /* Multiple-cursor edit: restore pre-edit cursor set */
 	UNDO_BOUNDARY     /* Marker: undo stops here, grouping prior ops */
 };
 
@@ -414,6 +421,9 @@ struct editor_buffer {
 	int backed_up;
 	int scratch;            /* 1 = not visiting a file; save prompts for name */
 	int fill_column;
+	int mc_count;           /* Secondary cursors, saved with the buffer. */
+	int mc_row[MC_MAX];
+	int mc_col[MC_MAX];
 };
 
 /* Global editor state */
@@ -422,6 +432,7 @@ extern int kg_bg_dark;      /* OSC 11 startup probe: 1=dark, 0=light, -1=unknown
 extern int mouse_col, mouse_row;  /* last mouse event, 1-based screen coords */
 extern int running;
 extern int suppress_undo;
+extern int undo_inhibit_autoboundary;
 extern struct kill_ring killring;
 extern struct undo_stack undostack;
 extern struct editor_buffer buflist[MAX_BUFFERS];
@@ -725,6 +736,20 @@ void editor_delete_rect(void);
 void editor_clear_rect(void);
 void editor_yank_rect(void);
 void editor_string_rect(int fd);
+
+/* Multiple cursors (mc.c) */
+int  mc_active(void);
+void mc_clear(void);
+void editor_mc_mark_next(void);
+void editor_mc_mark_all(void);
+void editor_mc_cursor_below(void);
+void editor_mc_cursor_above(void);
+int  editor_mc_self_insert(int c);
+int  editor_mc_backspace(void);
+int  editor_mc_del_forward(void);
+int  editor_mc_newline(void);
+int  editor_mc_yank(void);
+int  editor_mc_move(int key);
 void rect_kill_ring_free(void);
 void editor_kill_region(void);
 void editor_copy_region(void);

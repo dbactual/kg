@@ -1,0 +1,23 @@
+name: mc-parallel-newline
+filename: mc-nl.txt
+initial: |
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # mark all foos, move to end of each foo, RET splits each line there
+  # (raw split, no auto-indent staircase)
+  - C-c
+  - m
+  - a
+  - C-f
+  - C-f
+  - C-f
+  - RET
+expected_saved: |
+  foo
+   bar
+  foo
+   baz
+  foo
+   qux

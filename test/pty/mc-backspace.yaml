@@ -1,0 +1,19 @@
+name: mc-parallel-backspace
+filename: mc-bs.txt
+initial: |
+  foo! bar
+  foo! baz
+keys:
+  # mark all foo, move to end of foo! (C-f x4), backspace removes the !
+  - C-c
+  - m
+  - a
+  - C-f
+  - C-f
+  - C-f
+  - C-f
+  # C-? sends \x7f (backspace)
+  - C-?
+expected_saved: |
+  foo bar
+  foo baz

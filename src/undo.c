@@ -13,6 +13,8 @@ struct undo_stack undostack = {NULL, 0, MAX_UNDO_SIZE, -1};
 static time_t undo_last_time = 0;
 /* The type-class of the last real op, for type-change boundaries. */
 static int undo_last_class = -1;  /* 0=insert-char, 1=delete-char, 2=other */
+/* When non-zero, undo_push skips the auto-boundary (caller groups ops). */
+int undo_inhibit_autoboundary = 0;
 
 /* Classify an op into a grouping class.  Consecutive ops of the same
  * class within the time threshold are collapsed into one undo step.
@@ -93,12 +95,17 @@ void undo_push(enum undo_type type, int row, int col, int c, char *text, int len
 	if (suppress_undo) return;
 
 	/* Auto-boundary: compound ops always start a new group; char ops
-	 * start a new group when the class changes or time has elapsed. */
+	 * start a new group when the class changes or time has elapsed.
+	 * A caller that pushes several compound ops as ONE logical group
+	 * (multiple-cursor edit: cursor-state + buffer-restore) sets
+	 * undo_inhibit_autoboundary and manages boundaries itself. */
 	{
 		int cls = undo_class(type);
 		time_t now = time(NULL);
 
-		if (cls == 2) {
+		if (undo_inhibit_autoboundary) {
+			/* Caller manages grouping; skip the auto-boundary. */
+		} else if (cls == 2) {
 			/* Compound op: always boundary before. */
 			undo_push_boundary();
 		} else if (undo_last_class >= 0 && undo_last_class != cls) {
@@ -354,6 +361,44 @@ void editor_undo(void)
 		}
 		suppress_undo = 0;
 		editor.dirty++;
+		break;
+	}
+
+	case UNDO_MC_CURSORS: {
+		/* op->row/op->col = pre-edit primary position; op->text = the
+		 * pre-edit secondary cursors serialized as "r,c r,c ...".
+		 * Restore the cursor set so multiple-cursor editing continues
+		 * where it left off.  (editor_undo already did cursor_goto for
+		 * the primary via op->row/op->col.) */
+		editor.mc_count = 0;
+		if (op->text && op->len > 0) {
+			char *p = op->text;
+			char *end = op->text + op->len;
+			while (p < end && editor.mc_count < MC_MAX) {
+				int rr = 0, cc = 0;
+				while (p < end && *p >= '0' && *p <= '9')
+					rr = rr * 10 + (*p++ - '0');
+				if (p < end && *p == ',') p++;
+				while (p < end && *p >= '0' && *p <= '9')
+					cc = cc * 10 + (*p++ - '0');
+				if (p < end && *p == ' ') p++;
+				editor.mc_row[editor.mc_count] = rr;
+				editor.mc_col[editor.mc_count] = cc;
+				editor.mc_count++;
+			}
+		}
+		/* Clamp restored positions to the (restored) buffer. */
+		{
+			int i;
+			for (i = 0; i < editor.mc_count; i++) {
+				if (editor.mc_row[i] >= editor.numrows)
+					editor.mc_row[i] = editor.numrows - 1;
+				if (editor.mc_row[i] < 0) editor.mc_row[i] = 0;
+				if (editor.numrows > 0 &&
+				    editor.mc_col[i] > editor.row[editor.mc_row[i]].size)
+					editor.mc_col[i] = editor.row[editor.mc_row[i]].size;
+			}
+		}
 		break;
 	}
 

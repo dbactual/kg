@@ -1,0 +1,22 @@
+name: mc-parallel-yank
+filename: mc-yank.txt
+initial: |
+  SOURCE
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # kill SOURCE into the ring, drop to the first foo line, mark all
+  # foos, then C-y broadcasts the kill to every cursor.
+  - C-a
+  - C-k
+  - C-n
+  - C-c
+  - m
+  - a
+  - C-y
+expected_saved: |
+
+  SOURCEfoo bar
+  SOURCEfoo baz
+  SOURCEfoo qux

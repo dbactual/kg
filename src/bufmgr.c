@@ -85,6 +85,9 @@ static void buf_save_to_slot(int idx)
 	b->backed_up = editor.backed_up;
 	b->scratch = editor.scratch;
 	b->fill_column = editor.fill_column;
+	b->mc_count = editor.mc_count;
+	memcpy(b->mc_row, editor.mc_row, sizeof(b->mc_row));
+	memcpy(b->mc_col, editor.mc_col, sizeof(b->mc_col));
 	b->active = 1;
 }
 
@@ -114,6 +117,9 @@ void buf_restore_from_slot(int idx)
 	editor.backed_up = b->backed_up;
 	editor.scratch = b->scratch;
 	editor.fill_column = b->fill_column;
+	editor.mc_count = b->mc_count;
+	memcpy(editor.mc_row, b->mc_row, sizeof(editor.mc_row));
+	memcpy(editor.mc_col, b->mc_col, sizeof(editor.mc_col));
 	buf_current = idx;
 	buf_mru_touch(idx);
 	/* Keep the active window pointing at the newly-restored buffer. */

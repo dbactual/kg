@@ -1,0 +1,29 @@
+name: mc-undo-restores-cursor-position
+filename: mcu.txt
+dimensions: [24, 80]
+initial: |
+  foo bar
+  foo baz
+  foo qux
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  # move to line 1, mark all foo (primary stays on line 1), insert X at
+  # every cursor, then undo.  The buffer is restored AND the primary
+  # cursor returns to its pre-edit spot on line 1 -- not the buffer
+  # origin -- and the secondary cursors come back (MC:3 in the mode line).
+  - C-n
+  - C-c
+  - m
+  - a
+  - X
+  - C-_
+trailer_keys: [C-x, C-c]
+expected_saved: |
+  foo bar
+  foo baz
+  foo qux
+# primary cursor back on screen row 2 (buffer line 1), column 1.
+expected_cursor_at: [2, 1]
+expected_screen_contains:
+  - "MC:3"

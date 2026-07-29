@@ -21,7 +21,7 @@ man1dir = $(mandir)/man1
 SRCS = main.c tty.c syntax.c autocomplete.c buffer.c fileio.c display.c	\
        search.c basic.c word.c kbd.c yank.c undo.c help.c bufmgr.c	\
        winmgr.c cmd.c macro.c shell.c path.c rect.c vc.c xref.c project.c \
-       dabbrev.c picker.c
+       dabbrev.c picker.c mc.c
 
 # Object and header files
 OBJS = $(addprefix $(OBJDIR)/,$(SRCS:.c=.o))

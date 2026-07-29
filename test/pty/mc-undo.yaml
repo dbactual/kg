@@ -1,0 +1,17 @@
+name: mc-undo-single-step
+filename: mc-undo.txt
+initial: |
+  foo bar
+  foo baz
+  foo qux
+keys:
+  # mark all foos, insert X at each, then ONE C-_ undoes the whole stroke
+  - C-c
+  - m
+  - a
+  - X
+  - C-_
+expected_saved: |
+  foo bar
+  foo baz
+  foo qux

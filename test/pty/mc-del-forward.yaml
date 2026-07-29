@@ -1,0 +1,15 @@
+name: mc-parallel-del-forward
+filename: mc-delfwd.txt
+initial: |
+  xfoo bar
+  xfoo baz
+keys:
+  # cursor starts on the leading "x" (col 0); word at point is "xfoo",
+  # so C-c m a marks both occurrences at col 0.  C-d deletes the "x".
+  - C-c
+  - m
+  - a
+  - C-d
+expected_saved: |
+  foo bar
+  foo baz

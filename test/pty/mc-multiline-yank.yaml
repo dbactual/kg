@@ -1,0 +1,24 @@
+name: mc-multiline-yank
+filename: mc-mlyank.txt
+initial: |
+  one two
+  foo bar
+  foo baz
+keys:
+  # kill a two-line region ("one two\n") into the ring: C-SPC on line 0,
+  # C-n to line 1 start, C-w cuts both lines' content.  Then mark all
+  # foos and C-y broadcasts the multi-line text at each cursor.
+  - C-SPC
+  - C-n
+  - M-w
+  - C-n
+  - C-c
+  - m
+  - a
+  - C-y
+expected_saved: |
+  one two
+  one two
+  foo bar
+  one two
+  foo baz

@@ -238,6 +238,30 @@ static void draw_window_rows(struct abuf *ab,
 			c  = r->render + coloff;
 			hl = r->hl    + coloff;
 
+			/* Multiple cursors: paint each secondary cursor's cell on
+			 * this row with the vivid match face so it reads as a live
+			 * cursor.  Overwrite hl[] in place, then restore after the
+			 * draw (the array belongs to the buffer, not the frame). */
+			int mc_ov_idx[MC_MAX];
+			unsigned char mc_ov_saved[MC_MAX];
+			int mc_ov_n = 0;
+			if (editor.mc_count > 0) {
+				int mi;
+				for (mi = 0; mi < editor.mc_count; mi++) {
+					int rc, bc;
+					if (editor.mc_row[mi] != fr) continue;
+					bc = editor.mc_col[mi];
+					if (bc >= r->size) continue;  /* cursor at EOL: no cell */
+					rc = chars_to_render_col(r, bc);
+					if (rc < coloff || rc >= coloff + len) continue;
+					if (mc_ov_n >= MC_MAX) break;
+					mc_ov_idx[mc_ov_n] = rc - coloff;
+					mc_ov_saved[mc_ov_n] = hl[rc - coloff];
+					hl[rc - coloff] = HL_MATCH_CURRENT;
+					mc_ov_n++;
+				}
+			}
+
 			if (region_active && fr >= region_s_row && fr <= region_e_row) {
 				if (editor.rect_mode) {
 					int byte_lo = editor_chars_col_at_visual(r, region_s_col);
@@ -305,6 +329,9 @@ static void draw_window_rows(struct abuf *ab,
 					ab_append(ab, c+j, 1);
 				}
 			}
+			/* Restore the buffer's hl[] after the MC cursor overlay. */
+			while (mc_ov_n-- > 0)
+				hl[mc_ov_idx[mc_ov_n]] = mc_ov_saved[mc_ov_n];
 			/* When rect mode's right edge is past this row's
 			 * visual content, extend the highlight into virtual
 			 * space with reverse-video spaces — so a rectangle
@@ -372,6 +399,8 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	int readonly = is_current ? editor.readonly : b->readonly;
 	const char *flags;
 	char pos[8];
+	char mc_tag[16] = "";
+	int mc_n = is_current ? editor.mc_count : b->mc_count;
 
 	/* Show the full path (with ~ for $HOME) in the mode line so the
 	 * user always knows which file they're in.  Special *...* buffers
@@ -399,9 +428,12 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 	else
 		flags = dirty ? "-**-" : "----";
 
-	len = snprintf(status, sizeof(status), "%s  %s%s  %s (%d,%d)  (%s)",
+	if (mc_n > 0)
+		snprintf(mc_tag, sizeof(mc_tag), " MC:%d", mc_n + 1);
+
+	len = snprintf(status, sizeof(status), "%s  %s%s  %s (%d,%d)  (%s)%s",
 		flags, bname, changed,
-		pos, cur_row, cur_col, modename);
+		pos, cur_row, cur_col, modename, mc_tag);
 
 	if (len > win_w) len = win_w;
 	ab_append(ab, status, len);

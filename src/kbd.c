@@ -208,12 +208,27 @@ void editor_process_keypress(int fd)
 		return;
 	}
 
+	/* Handle C-c m multiple-cursor ops (third key after C-c m). */
+	if (editor.mc_prefix) {
+		editor.mc_prefix = 0;
+		switch (c) {
+		case 'n':              editor_mc_mark_next();    break;  /* next occurrence */
+		case 'a':              editor_mc_mark_all();     break;  /* all occurrences */
+		case 'j': case CTRL_N: editor_mc_cursor_below(); break;  /* cursor below */
+		case 'k': case CTRL_P: editor_mc_cursor_above(); break;  /* cursor above */
+		case CTRL_G:           mc_clear(); break;
+		default:               editor_set_status_message("C-c m %c is undefined", c); break;
+		}
+		return;
+	}
+
 	/* Handle C-c prefix commands (second key after C-c). */
 	if (editor.cc_prefix) {
 		editor.cc_prefix = 0;
 		switch (c) {
 		case 'g':              editor_goto_line(fd); break;  /* C-c g: goto line */
 		case 'f':              editor_copy_file_line(); break; /* C-c f: copy file:line */
+		case 'm':              editor.mc_prefix = 1; editor_set_status_message("C-c m-"); return; /* MC prefix */
 		case CTRL_G:           editor_set_status_message(""); break;
 		default:               editor_set_status_message("C-c %c is undefined", c); break;
 		}
@@ -433,6 +448,10 @@ void editor_process_keypress(int fd)
 		editor_set_mark();
 		break;
 	case ENTER:         /* Enter */
+		if (mc_active()) {
+			while (n--) editor_mc_newline();
+			break;
+		}
 		while (n--) editor_insert_newline();
 		break;
 	case TAB:           /* TAB: region indent, dabbrev, or literal tab */
@@ -466,21 +485,33 @@ void editor_process_keypress(int fd)
 		 * indenter to drive). */
 		break;
 	case CTRL_A:        /* Beginning of line */
+		if (mc_active() && editor_mc_move(HOME_KEY)) break;
 		editor_move_cursor(HOME_KEY);
 		break;
 	case CTRL_B:        /* Backward char */
+		if (mc_active() && editor_mc_move(ARROW_LEFT)) break;
 		while (n--) editor_move_cursor(ARROW_LEFT);
 		break;
 	case CTRL_D:        /* Delete char forward */
+		if (mc_active()) {
+			while (n--) editor_mc_del_forward();
+			break;
+		}
 		while (n--) editor_del_forward_char();
 		break;
 	case CTRL_E:        /* End of line */
+		if (mc_active() && editor_mc_move(END_KEY)) break;
 		editor_move_cursor(END_KEY);
 		break;
 	case CTRL_F:        /* Forward char */
+		if (mc_active() && editor_mc_move(ARROW_RIGHT)) break;
 		while (n--) editor_move_cursor(ARROW_RIGHT);
 		break;
 	case CTRL_G:        /* Keyboard quit / cancel */
+		if (mc_active()) {
+			mc_clear();
+			break;
+		}
 		editor.mark_highlight = 0;
 		editor.rect_mode = 0;
 		editor_snap_cx_to_row();
@@ -524,9 +555,11 @@ void editor_process_keypress(int fd)
 		while (n--) editor_transpose_chars();
 		break;
 	case CTRL_N:        /* Next line */
+		if (mc_active() && editor_mc_move(ARROW_DOWN)) break;
 		while (n--) editor_move_cursor(ARROW_DOWN);
 		break;
 	case CTRL_P:        /* Previous line */
+		if (mc_active() && editor_mc_move(ARROW_UP)) break;
 		while (n--) editor_move_cursor(ARROW_UP);
 		break;
 	case CTRL_S:        /* Incremental search forward */
@@ -570,6 +603,10 @@ void editor_process_keypress(int fd)
 	case SHIFT_INSERT:  /* CUA paste */
 		if (editor_readonly_blocked())
 			break;
+		if (mc_active()) {
+			while (n--) editor_mc_yank();
+			break;
+		}
 		if (n > 1 && killring.text && killring.len > 0) {
 			/* Batch N yanks under one undo: UNDO_YANK_TEXT reverses by
 			 * deleting len chars forward, so the record must carry the
@@ -606,6 +643,10 @@ void editor_process_keypress(int fd)
 		editor_suspend();
 		break;
 	case BACKSPACE:     /* Backspace */
+		if (mc_active()) {
+			while (n--) editor_mc_backspace();
+			break;
+		}
 		while (n--) editor_del_char();
 		break;
 	case DEL_KEY:       /* Forward delete; consumes an active region first. */
@@ -631,6 +672,7 @@ void editor_process_keypress(int fd)
 	case ARROW_DOWN:
 	case ARROW_LEFT:
 	case ARROW_RIGHT:
+		if (mc_active() && editor_mc_move(c)) break;
 		while (n--) editor_move_cursor(c);
 		break;
 	case HOME_KEY:
@@ -740,6 +782,10 @@ void editor_process_keypress(int fd)
 		editor_copy_region();
 		break;
 	case ALT_Y:         /* M-y: yank-pop (cycle kill ring) */
+		if (mc_active()) {
+			editor_set_status_message("M-y not supported with multiple cursors");
+			break;
+		}
 		editor_yank_pop();
 		break;
 	case ALT_Q:         /* Reflow paragraph */
@@ -813,8 +859,13 @@ void editor_process_keypress(int fd)
 		 * times when a C-u prefix preceded the key.
 		 *
 		 * TAB has its own case below; other keys fall through to here. */
-		if (c >= 32 && c < 127)
+		if (c >= 32 && c < 127) {
+			if (mc_active()) {
+				while (n--) editor_mc_self_insert(c);
+				break;
+			}
 			while (n--) editor_insert_char_auto_complete(c);
+		}
 		/* Silently ignore all other control/non-printable characters */
 		break;
 	}
