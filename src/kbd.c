@@ -377,9 +377,9 @@ void editor_process_keypress(int fd)
 			if (editor.syntax->flags & SHL_VCDIR)     { vc_dir_select();    return; }
 			if (editor.syntax->flags & SHL_GREP)      { grep_select();      return; }
 			if (editor.syntax->flags & SHL_XREF)      { xref_select();      return; }
-			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(); return; }
+			if (editor.syntax->flags & SHL_IBUFFER)   { buf_ibuffer_select(fd); return; }
 		}
-		buf_ibuffer_select();
+		buf_ibuffer_select(fd);
 		return;
 	}
 

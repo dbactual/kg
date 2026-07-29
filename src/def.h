@@ -485,7 +485,7 @@ void buf_kill(int fd);
 int buf_save_all(int fd);
 void buf_open_list(void);
 void buf_open_help(void);
-void buf_ibuffer_select(void);
+void buf_ibuffer_select(int fd);
 void buf_ibuffer_close(int fd);
 int  buf_find_by_filename(const char *fn);
 int  buf_open_path(const char *path, int readonly);

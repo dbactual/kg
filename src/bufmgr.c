@@ -1574,27 +1574,36 @@ static int buf_ibuffer_close_panel(void)
 	return 1;
 }
 
+/* Kill the *Buffer List* buffer.  The list is a transient selector,
+ * not a real buffer: both q and Enter must leave no trace of it, or it
+ * lingers in buflist and shows up as a candidate in the next C-x b.
+ * Restores the list slot and buf_kill()s it (the list is read-only and
+ * never dirty, so no modified prompt); buf_kill switches to the
+ * nearest remaining buffer. */
+static void ibuf_kill_buffer(int fd)
+{
+	int i;
+
+	for (i = 0; i < MAX_BUFFERS; i++) {
+		if (buflist[i].active && buflist[i].filename &&
+		    strcmp(buflist[i].filename, IBUF_NAME) == 0) {
+			buf_restore_from_slot(i);
+			break;
+		}
+	}
+	buf_kill(fd);
+}
+
 /* q in the *Buffer List*: close the panel window and kill the buffer,
  * returning to the previous buffer in the main window. */
 void buf_ibuffer_close(int fd)
 {
 	int origin = ibuf_origin_buf;
-	int i;
 
 	ibuf_origin_buf = -1;
 
-	if (buf_ibuffer_close_panel()) {
-		/* Panel closed; now switch the live buffer to the *Buffer
-		 * List* slot so buf_kill targets it. */
-		for (i = 0; i < MAX_BUFFERS; i++) {
-			if (buflist[i].active && buflist[i].filename &&
-			    strcmp(buflist[i].filename, IBUF_NAME) == 0) {
-				buf_restore_from_slot(i);
-				break;
-			}
-		}
-	}
-	buf_kill(fd);   /* switches to the nearest remaining buffer */
+	buf_ibuffer_close_panel();
+	ibuf_kill_buffer(fd);
 
 	/* buf_kill picks the first active slot, which is usually NOT the
 	 * buffer the user was in before opening the list.  Return there. */
@@ -1607,7 +1616,7 @@ void buf_ibuffer_close(int fd)
 	}
 }
 
-void buf_ibuffer_select(void)
+void buf_ibuffer_select(int fd)
 {
 	int filerow = editor.rowoff + editor.cy;
 	const char *filename;
@@ -1630,6 +1639,7 @@ void buf_ibuffer_select(void)
 		buf_display_full_name(i, disp, sizeof(disp));
 		if (strcmp(disp, filename) == 0) {
 			buf_ibuffer_close_panel();
+			ibuf_kill_buffer(fd);   /* kill the list, like q does */
 			buf_save_current_state();
 			buf_restore_from_slot(i);
 			editor_set_status_message("%s", editor.filename ? editor.filename : "[new]");
