@@ -1,0 +1,20 @@
+name: buffer-list-q-returns-to-origin
+filename: oa.txt
+config_files:
+  ob.txt: "OB\n"
+dimensions: [24, 80]
+initial: |
+  OA
+startup_delay: 0.4
+key_delay: 0.04
+# open ob (current = ob), open buffer list, q closes it -> back on ob.txt
+keys: [C-x, C-f, ob.txt, RET, C-x, C-b, q]
+trailer_keys: [C-x, C-c]
+expected_saved_any:
+  - |
+    OA
+  - |
+    OB
+# after q the mode line shows ob.txt (the buffer we were in before C-x C-b)
+expected_screen_contains:
+  - "ob.txt"

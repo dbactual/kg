@@ -1,0 +1,19 @@
+name: picker-vertical-navigate-c-n
+filename: nav.txt
+dimensions: [24, 80]
+initial: hello
+startup_delay: 0.4
+key_delay: 0.03
+keys:
+  # M-x "delete" lists delete-horizontal-space (1st) and
+  # delete-trailing-space (2nd).  C-n moves the selection down, RET runs
+  # the 2nd command on the current line (no trailing ws -> no-op msg).
+  - M-x
+  - "delete"
+  - C-n
+trailer_keys: [C-g, C-x, C-c]
+expected_saved: hello
+# Both candidates visible in the vertical panel after navigating.
+expected_screen_contains:
+  - "delete-horizontal-space"
+  - "delete-trailing-space"

@@ -1,0 +1,20 @@
+name: buffer-list-bottom-panel
+filename: bp.txt
+dimensions: [24, 80]
+initial: |
+  content
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  - C-x
+  - C-b
+trailer_keys: [q, C-x, C-c]
+expected_saved: |
+  content
+# The buffer list opens in a bottom panel with a header row and the
+# *Buffer List* mode line, while the editing window stays above.
+expected_screen_contains:
+  - "Buffer"
+  - "Size"
+  - "Mode"
+  - "*Buffer List*"

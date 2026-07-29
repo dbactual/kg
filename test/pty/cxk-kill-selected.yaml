@@ -1,0 +1,15 @@
+name: cxk-kill-selected-buffer
+filename: ka.txt
+config_files:
+  kb.txt: "KB\n"
+dimensions: [24, 80]
+initial: |
+  KA
+startup_delay: 0.4
+key_delay: 0.04
+# Open kb (current = kb.txt), then C-x k RET kills the current buffer
+# (kb.txt) and returns to ka.txt, whose content we save.
+keys: [C-x, C-f, kb.txt, RET, C-x, k, RET]
+trailer_keys: [C-x, C-s, C-x, C-c]
+expected_saved: |
+  KA

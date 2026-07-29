@@ -1,0 +1,17 @@
+name: yaml-syntax-mode
+filename: config.yaml
+initial: |
+  name: my-app
+  enabled: true
+  port: 5432
+startup_delay: 0.4
+key_delay: 0.02
+keys:
+  - Z
+expected_saved: |
+  Zname: my-app
+  enabled: true
+  port: 5432
+# The mode line shows the YAML syntax mode for .yaml files.
+expected_screen_contains:
+  - "(YAML)"

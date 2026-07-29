@@ -1,0 +1,16 @@
+name: picker-tiny-screen-horizontal-fallback
+filename: tiny.txt
+dimensions: [8, 80]
+initial: hello
+startup_delay: 0.4
+key_delay: 0.03
+keys:
+  - M-x
+  - "sort"
+trailer_keys: [C-g, C-x, C-c]
+expected_saved: hello
+# On a screen too small to split, the picker falls back to the horizontal
+# echo-area display (no *Completions* panel window).
+expected_screen_contains:
+  - "sort-lines"
+  - "M-x sort"

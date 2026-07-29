@@ -1,0 +1,22 @@
+name: cxk-kill-picker-preselects-current
+filename: ka.txt
+config_files:
+  kb.txt: "KB\n"
+dimensions: [24, 80]
+initial: |
+  KA
+startup_delay: 0.4
+key_delay: 0.04
+# Open kb (current = kb.txt).  C-x k lists open buffers with the current
+# buffer pre-selected as the kill target.
+keys: [C-x, C-f, kb.txt, RET, C-x, k]
+trailer_keys: [C-g, C-x, C-c]
+expected_saved_any:
+  - |
+    KA
+  - |
+    KB
+expected_screen_contains:
+  - "kb.txt"
+  - "ka.txt"
+  - "Kill buffer: "

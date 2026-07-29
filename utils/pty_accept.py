@@ -20,8 +20,13 @@ import yaml
 DEFAULT_TRAILER = ["C-x", "C-s", "C-x", "C-c"]
 DEFAULT_DIMENSIONS = (24, 80)
 DEFAULT_TIMEOUT = 5.0
-DEFAULT_STARTUP_DELAY = 0.5
-DEFAULT_KEY_DELAY = 0.05
+# Startup/key delays tuned down for a fast suite: 0.3s gives kg time to
+# draw and be ready for the first keystroke (isearch/paging cases need a
+# touch more settle time than plain typing); 0.02s between keys keeps
+# the editor ahead of the input.  Verified reliable across repeated
+# runs of plain-save, isearch, and interactive picker cases.
+DEFAULT_STARTUP_DELAY = 0.3
+DEFAULT_KEY_DELAY = 0.02
 EMACS = os.environ.get("KG_PTY_EMACS", "emacs")
 
 

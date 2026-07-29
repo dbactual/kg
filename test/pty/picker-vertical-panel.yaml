@@ -1,0 +1,21 @@
+name: picker-vertical-panel-shows-candidates
+filename: vp.txt
+dimensions: [24, 80]
+initial: hello
+startup_delay: 0.3
+key_delay: 0.02
+keys:
+  - M-x
+  - "delete"
+trailer_keys:
+  - C-g
+  - C-x
+  - C-c
+expected_saved: hello
+# The vertical panel lists matching commands one per row above the echo
+# area, with the prompt (and typed query) on the echo line itself.
+expected_screen_contains:
+  - "delete-horizontal-space"
+  - "delete-trailing-space"
+  - "M-x delete"
+  - "*Completions*"

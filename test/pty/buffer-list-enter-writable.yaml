@@ -1,0 +1,16 @@
+name: buffer-list-enter-keeps-file-writable
+filename: rw.txt
+dimensions: [24, 80]
+initial: |
+  editable
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  # open buffer list, Enter on the file (back to it), then type to prove
+  # it is NOT read-only (the readonly-leak regression).
+  - C-x
+  - C-b
+  - RET
+  - Z
+expected_saved: |
+  Zeditable

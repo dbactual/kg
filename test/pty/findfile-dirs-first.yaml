@@ -1,0 +1,26 @@
+name: findfile-picker-dirs-first-with-slash
+filename: dd/aaa.txt
+config_files:
+  dd/alpha/x.txt: "x\n"
+  dd/zeta/y.txt: "y\n"
+  dd/bfile.txt: "b\n"
+dimensions: [24, 80]
+initial: |
+  content
+startup_delay: 0.3
+key_delay: 0.02
+keys:
+  - C-x
+  - C-f
+trailer_keys:
+  - C-g
+  - C-x
+  - C-c
+expected_saved: |
+  content
+# Directories sort before files and display with a trailing slash.
+expected_screen_contains:
+  - "alpha/"
+  - "zeta/"
+  - "bfile.txt"
+  - "Open file:"

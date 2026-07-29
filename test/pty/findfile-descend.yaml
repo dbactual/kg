@@ -1,0 +1,22 @@
+name: findfile-directory-descend
+filename: dd/top.txt
+config_files:
+  dd/sub/inner.txt: "INNER\n"
+dimensions: [24, 80]
+initial: |
+  TOP
+startup_delay: 0.4
+key_delay: 0.03
+keys:
+  # C-x C-f, type sub/ to descend, pick inner.txt
+  - C-x
+  - C-f
+  - sub/
+  - inner.txt
+  - RET
+trailer_keys: [C-x, C-c]
+expected_saved: |
+  TOP
+# After descending and opening, the mode line shows inner.txt.
+expected_screen_contains:
+  - "inner.txt"

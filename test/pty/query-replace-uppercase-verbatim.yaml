@@ -1,0 +1,17 @@
+name: query-replace-uppercase-search-verbatim
+filename: qr.txt
+initial: |
+  flag = TRUE
+  other = true
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  - M-%
+  - "TRUE"
+  - RET
+  - "true"
+  - RET
+  - "!"
+expected_saved: |
+  flag = true
+  other = true

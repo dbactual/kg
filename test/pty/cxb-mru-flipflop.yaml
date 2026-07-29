@@ -1,0 +1,23 @@
+name: cxb-mru-flip-flop-twice
+filename: fb.txt
+config_files:
+  fa.txt: "AAA\n"
+dimensions: [24, 80]
+initial: |
+  BBB
+startup_delay: 0.4
+key_delay: 0.04
+# Open fb (current), C-x C-f fa (current = fa), then:
+#   C-x b RET  -> flip to fb (previous buffer, MRU default)
+#   C-x b RET  -> flip back to fa
+# The mode line after the second flip shows fa.txt again.
+keys: [C-x, C-f, fa.txt, RET, C-x, b, RET, C-x, b, RET]
+trailer_keys: [C-x, C-c]
+expected_saved_any:
+  - |
+    AAA
+  - |
+    BBB
+# Back on fa.txt after the two flips (its name is in the mode line).
+expected_screen_contains:
+  - "fa.txt"

@@ -1,0 +1,16 @@
+name: upcase-region-two-lines
+filename: case2.txt
+initial: |
+  hello world
+  foo bar
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  - C-SPC
+  - C-n
+  - C-n
+  - C-x
+  - C-u
+expected_saved: |
+  HELLO WORLD
+  FOO BAR

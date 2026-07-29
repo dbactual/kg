@@ -1,0 +1,22 @@
+name: auto-revert-on-by-default
+filename: ar.txt
+dimensions: [24, 80]
+initial: |
+  version 1
+startup_delay: 0.4
+key_delay: 0.04
+# The file is changed on disk *by the harness before kg starts* is not
+# possible; instead rely on kg's auto-revert being on by default: open
+# the file, wait past the 2s poll interval while the file's mtime is
+# bumped by an external write performed via shell from within kg is too
+# complex for the harness -- so this case just verifies auto-revert is
+# enabled by default via the mode-line behavior after an external edit.
+keys:
+  - M-x
+  - "global-auto-revert-mode"
+  - RET
+expected_saved: |
+  version 1
+# Toggling reports the new state in the echo area.
+expected_screen_contains:
+  - "Global auto-revert is off"

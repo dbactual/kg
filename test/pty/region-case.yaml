@@ -1,0 +1,24 @@
+name: upcase-and-downcase-region
+filename: case.txt
+initial: |
+  hello world
+  foo bar
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  # select both lines, upcase them
+  - C-SPC
+  - C-n
+  - C-n
+  - C-x
+  - C-u
+  # back to top, select both, downcase them
+  - M-<
+  - C-SPC
+  - C-n
+  - C-n
+  - C-x
+  - C-l
+expected_saved: |
+  hello world
+  foo bar

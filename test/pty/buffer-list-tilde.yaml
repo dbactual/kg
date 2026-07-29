@@ -1,0 +1,17 @@
+name: buffer-list-tilde-home-path
+filename: bl.txt
+dimensions: [24, 80]
+initial: |
+  content
+startup_delay: 0.4
+key_delay: 0.04
+keys:
+  - C-x
+  - C-b
+trailer_keys: [q, C-x, C-c]
+expected_saved: |
+  content
+# The file path column abbreviates $HOME to ~.  The file lives in the
+# harness temp HOME, so its path displays as ~/bl.txt.
+expected_screen_contains:
+  - "~/bl.txt"
