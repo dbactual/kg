@@ -19,6 +19,10 @@ static struct editor_syntax text_syntax = {
 
 struct editor_buffer buflist[MAX_BUFFERS];
 int buf_current = 0;
+
+/* Buffer that was current when the *Buffer List* was last opened, so
+ * q (buf_ibuffer_close) can return to it.  -1 = none recorded. */
+static int ibuf_origin_buf = -1;
 int buf_count   = 0;
 
 #define AUTOREVERT_POLL_INTERVAL_SEC 2
@@ -1424,6 +1428,11 @@ void buf_open_list(void)
 	if (editor.filename && strcmp(editor.filename, IBUF_NAME) == 0)
 		already_open = 1;
 
+	/* Remember where to return on q -- but not when merely refreshing
+	 * an already-open list, when buf_current IS the list itself. */
+	if (!already_open)
+		ibuf_origin_buf = prev;
+
 	if (!already_open) {
 		/* Size: buffers + 2 header rows, capped at half the screen. */
 		panel_h = nbuf + 2;
@@ -1530,10 +1539,14 @@ static int buf_ibuffer_close_panel(void)
  * returning to the previous buffer in the main window. */
 void buf_ibuffer_close(int fd)
 {
+	int origin = ibuf_origin_buf;
+	int i;
+
+	ibuf_origin_buf = -1;
+
 	if (buf_ibuffer_close_panel()) {
-		/* Panel closed; now kill the *Buffer List* buffer itself.
-		 * buf_kill switches to the nearest remaining buffer. */
-		int i;
+		/* Panel closed; now switch the live buffer to the *Buffer
+		 * List* slot so buf_kill targets it. */
 		for (i = 0; i < MAX_BUFFERS; i++) {
 			if (buflist[i].active && buflist[i].filename &&
 			    strcmp(buflist[i].filename, IBUF_NAME) == 0) {
@@ -1542,7 +1555,17 @@ void buf_ibuffer_close(int fd)
 			}
 		}
 	}
-	buf_kill(fd);
+	buf_kill(fd);   /* switches to the nearest remaining buffer */
+
+	/* buf_kill picks the first active slot, which is usually NOT the
+	 * buffer the user was in before opening the list.  Return there. */
+	if (origin >= 0 && origin < MAX_BUFFERS && buflist[origin].active &&
+	    origin != buf_current) {
+		buf_save_current_state();
+		buf_restore_from_slot(origin);
+		editor_set_status_message("%s",
+			editor.filename ? editor.filename : "[new]");
+	}
 }
 
 void buf_ibuffer_select(void)
@@ -1552,6 +1575,7 @@ void buf_ibuffer_select(void)
 	int i;
 
 	if (editor.syntax != &ibuffer_syntax) return; /* only valid in IBuffer mode */
+	ibuf_origin_buf = -1;   /* Enter navigates away; no return-to-origin */
 	if (filerow < IBUF_HEADER_ROWS || filerow >= editor.numrows) return; /* skip header rows */
 	if (editor.row[filerow].size <= IBUF_FILENAME_OFFSET) return;
 
