@@ -323,6 +323,9 @@ char *DART_HL_keywords[] = {
 	"Comparable|", "Duration|", "DateTime|", "Uri|", "RegExp|", "StringBuffer|",
 	"Symbol|", "Type|", "Function|", "Null|", NULL};
 
+/* YAML */
+char *YAML_HL_extensions[] = {".yaml", ".yml", NULL};
+
 /* HTML */
 char *HTML_HL_extensions[] = {".html", ".htm", ".xhtml", NULL};
 char *HTML_HL_keywords[] = {
@@ -551,6 +554,7 @@ char *MD_HL_keywords[]   = {NULL};
 /* Here we define an array of syntax highlights by extensions, keywords,
  * comments delimiters and flags. */
 struct editor_syntax HLDB[] = {
+	{ "YAML",       YAML_HL_extensions,    NULL,                "#","","",    SHL_YAML },
 	{ "C",          C_HL_extensions,       C_HL_keywords,       "//","/*","*/", HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
 	{ "Python",     PYTHON_HL_extensions,  PYTHON_HL_keywords,  "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS | SHL_TRIPLE_QUOTE },
 	{ "Shell",      SHELL_HL_extensions,   SHELL_HL_keywords,   "#","","",      HL_HIGHLIGHT_STRINGS | HL_HIGHLIGHT_NUMBERS },
@@ -814,6 +818,123 @@ static void makefile_syntax(erow *row)
 	make_var_and_comment(row, i);
 }
 
+/* YAML syntax highlighter.
+ *   comment (#, honouring quotes)                → HL_COMMENT
+ *   mapping key (before ':')                     → HL_KEYWORD1
+ *   document markers "---" / "..."               → HL_KEYWORD1
+ *   list-item dash "- "                          → HL_KEYWORD1
+ *   single/double-quoted strings                 → HL_STRING
+ *   numbers                                      → HL_NUMBER
+ *   true/false/null/~/yes/no/on/off              → HL_KEYWORD2
+ *   anchors &aliases / *refs / !tags             → HL_KEYWORD2
+ * YAML has no multi-line comments and no keyword list, so a bespoke
+ * highlighter (like Makefile's) beats the generic one. */
+static void yaml_syntax(erow *row)
+{
+	char *p = row->render;
+	int len = row->rsize;
+	int i, j, k, colon, inq;
+	char qc;
+	static const char *bools[] = {
+		"true", "false", "null", "Null", "NULL", "~",
+		"yes", "no", "Yes", "No", "YES", "NO",
+		"on", "off", "On", "Off", "ON", "OFF",
+		"True", "False", "TRUE", "FALSE", NULL
+	};
+
+	if (len == 0) return;
+
+	/* Document start/end markers. */
+	if ((len >= 3 && !strncmp(p, "---", 3) &&
+	     (len == 3 || p[3] == ' ')) ||
+	    (len >= 3 && !strncmp(p, "...", 3) && (len == 3 || p[3] == ' '))) {
+		memset(row->hl, HL_KEYWORD1, 3);
+		i = 3;
+	} else {
+		i = 0;
+	}
+
+	/* Find the mapping colon: first ':' followed by space/EOL, outside
+	 * quotes and before any '#'.  Highlight the key up to it. */
+	colon = -1;
+	inq = 0; qc = 0;
+	for (j = i; j < len; j++) {
+		if (inq) {
+			if (p[j] == qc) inq = 0;
+			continue;
+		}
+		if (p[j] == '"' || p[j] == '\'') { inq = 1; qc = p[j]; continue; }
+		if (p[j] == '#') break;
+		if (p[j] == ':' && (j+1 >= len || p[j+1] == ' ')) { colon = j; break; }
+	}
+	if (colon > 0) {
+		/* Key: from first non-space up to the colon. */
+		k = i;
+		while (k < colon && p[k] == ' ') k++;
+		if (k < colon) memset(row->hl+k, HL_KEYWORD1, colon-k);
+		i = colon + 1;
+	}
+
+	/* Scan the rest (value / list items) for strings, comments,
+	 * numbers, booleans, anchors and the leading list dash. */
+	inq = 0; qc = 0;
+	for (j = 0; j < len; j++) {
+		if (row->hl[j] != HL_NORMAL) continue;   /* key/marker already set */
+		if (inq) {
+			row->hl[j] = HL_STRING;
+			if (p[j] == qc && (qc != '\'' || p[j+1] != '\'')) inq = 0;
+			else if (qc == '\'' && p[j] == '\'' && p[j+1] == '\'') j++;
+			continue;
+		}
+		if (p[j] == '"' || p[j] == '\'') {
+			inq = 1; qc = p[j];
+			row->hl[j] = HL_STRING;
+			continue;
+		}
+		if (p[j] == '#') {
+			memset(row->hl+j, HL_COMMENT, len-j);
+			break;
+		}
+		/* List-item dash at line start (after optional spaces). */
+		if (p[j] == '-' && (j == 0 || p[j-1] == ' ') &&
+		    (j+1 >= len || p[j+1] == ' ')) {
+			int only_ws_before = 1, m;
+			for (m = 0; m < j; m++)
+				if (p[m] != ' ') { only_ws_before = 0; break; }
+			if (only_ws_before) { row->hl[j] = HL_KEYWORD1; continue; }
+		}
+		/* Anchors/aliases/tags. */
+		if ((p[j] == '&' || p[j] == '*' || p[j] == '!') &&
+		    (j == 0 || p[j-1] == ' ')) {
+			row->hl[j] = HL_KEYWORD2;
+			continue;
+		}
+		/* Numbers (a run starting with a digit, optionally signed). */
+		if ((isdigit((unsigned char)p[j]) ||
+		     ((p[j]=='-'||p[j]=='+') && j+1<len && isdigit((unsigned char)p[j+1]))) &&
+		    (j == 0 || is_separator(p[j-1]))) {
+			row->hl[j] = HL_NUMBER;
+			while (j+1 < len &&
+			       (isalnum((unsigned char)p[j+1]) ||
+			        p[j+1]=='.' || p[j+1]=='_' || p[j+1]=='x' || p[j+1]=='X'))
+				{ j++; row->hl[j] = HL_NUMBER; }
+			continue;
+		}
+		/* Booleans / null as whole words. */
+		if (j == 0 || is_separator(p[j-1])) {
+			for (k = 0; bools[k]; k++) {
+				int bl = (int)strlen(bools[k]);
+				if (j+bl <= len && !strncmp(p+j, bools[k], bl) &&
+				    (j+bl >= len || is_separator(p[j+bl]))) {
+					memset(row->hl+j, HL_KEYWORD2, bl);
+					j += bl - 1;
+					break;
+				}
+			}
+		}
+	}
+}
+
 /* Unified-diff highlighter (vc-mode *git-diff* buffer).
  *   "diff ..." / "index ..." / "--- " / "+++ "  → magenta (file header)
  *   "@@ -a,b +c,d @@"                            → cyan   (hunk header)
@@ -968,6 +1089,11 @@ void editor_update_syntax(erow *row)
 
 	if (editor.syntax->flags & SHL_MAKEFILE) {
 		makefile_syntax(row);
+		return;
+	}
+
+	if (editor.syntax->flags & SHL_YAML) {
+		yaml_syntax(row);
 		return;
 	}
 

@@ -100,6 +100,7 @@ int tty_query_background(int fd);
 #define SHL_GREP             (1<<9) /* *grep* file:line highlighter.        */
 #define SHL_XREF             (1<<10)/* *xref* definition-match highlighter.*/
 #define SHL_TRIPLE_QUOTE     (1<<11)/* Python-style """ and ''' strings.    */
+#define SHL_YAML             (1<<12)/* YAML-specific highlighter.           */
 
 /* Key action codes */
 enum KEY_ACTION {
