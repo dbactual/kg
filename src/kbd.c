@@ -250,6 +250,12 @@ void editor_process_keypress(int fd)
 		case CTRL_B:    /* C-x C-b: Open buffer list */
 			buf_open_list();
 			break;
+		case CTRL_L:    /* C-x C-l: Downcase region */
+			editor_downcase_region();
+			break;
+		case CTRL_U:    /* C-x C-u: Upcase region */
+			editor_upcase_region();
+			break;
 		case '2':       /* C-x 2: Split window horizontally */
 			win_split_horizontal();
 			break;

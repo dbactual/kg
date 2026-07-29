@@ -697,6 +697,99 @@ void editor_upcase_word(void)     { do_word_case('u'); }
 void editor_downcase_word(void)   { do_word_case('l'); }
 void editor_capitalize_word(void) { do_word_case('c'); }
 
+/* Apply a case transformation to the active region, spanning as many
+ * rows as the region covers.  Only the character data changes -- row
+ * count, line breaks, and columns are all preserved.  mode: 'u' =
+ * upcase, 'l' = downcase.
+ *
+ * Undo is a single step: the original rows are saved joined with '\n'
+ * and replayed by the UNDO_REFLOW_PARA handler (which deletes the same
+ * number of rows and re-inserts the originals -- exact here because a
+ * case change never alters the row count). */
+static void do_region_case(int mode)
+{
+	int cur_row = editor.rowoff + editor.cy;
+	int cur_col = editor.coloff + editor.cx;
+	int r0, r1, c0, c1, r, total, nrows;
+	char *orig, *w;
+	int up = (mode == 'u');
+
+	if (editor_readonly_blocked())
+		return;
+	if (!editor.mark_set || !editor.mark_highlight) {
+		editor_set_status_message("No active region");
+		return;
+	}
+
+	/* Normalise region bounds to (r0,c0) <= (r1,c1). */
+	if (editor.mark_row < cur_row ||
+	    (editor.mark_row == cur_row && editor.mark_col < cur_col)) {
+		r0 = editor.mark_row; c0 = editor.mark_col;
+		r1 = cur_row;         c1 = cur_col;
+	} else {
+		r0 = cur_row;         c0 = cur_col;
+		r1 = editor.mark_row; c1 = editor.mark_col;
+	}
+	if (r0 < 0) r0 = 0;
+	if (r1 >= editor.numrows) r1 = editor.numrows - 1;
+	if (r1 < r0) return;
+
+	/* A region ending at column 0 does not cover its last line; after
+	 * excluding it, the new last row is covered in full. */
+	if (c1 == 0 && r1 > r0) {
+		r1--;
+		c1 = editor.row[r1].size;
+	}
+
+	/* Clamp the column bounds to their rows. */
+	if (c0 > editor.row[r0].size) c0 = editor.row[r0].size;
+	if (c1 > editor.row[r1].size) c1 = editor.row[r1].size;
+
+	nrows = r1 - r0 + 1;
+
+	/* Save the FULL original rows, joined with '\n', for undo.  The
+	 * UNDO_REFLOW_PARA handler deletes op->col whole rows and re-inserts
+	 * op->text; since a region can start/end mid-row, the undo text must
+	 * be the complete rows so nothing outside the region is lost. */
+	total = 0;
+	for (r = r0; r <= r1; r++)
+		total += editor.row[r].size + 1;   /* +1 for the '\n' separator */
+	orig = malloc(total + 1);
+	if (!orig) return;
+	w = orig;
+	for (r = r0; r <= r1; r++) {
+		erow *row = &editor.row[r];
+		memcpy(w, row->chars, row->size);
+		w += row->size;
+		if (r < r1) *w++ = '\n';
+	}
+	*w = '\0';
+
+	/* Transform only the selected column range, in place. */
+	for (r = r0; r <= r1; r++) {
+		erow *row = &editor.row[r];
+		int rs = (r == r0) ? c0 : 0;
+		int re = (r == r1) ? c1 : row->size;
+		int i;
+		if (re < rs) re = rs;
+		for (i = rs; i < re; i++) {
+			unsigned char ch = (unsigned char)row->chars[i];
+			row->chars[i] = up ? toupper(ch) : tolower(ch);
+		}
+		editor_update_row(row);
+		editor.dirty++;
+	}
+
+	undo_push(UNDO_REFLOW_PARA, r0, nrows, 0, orig, w - orig);
+	free(orig);
+
+	editor_set_status_message("Region %scased (%d row%s)",
+		up ? "up" : "down", nrows, nrows == 1 ? "" : "s");
+}
+
+void editor_upcase_region(void)   { do_region_case('u'); }
+void editor_downcase_region(void) { do_region_case('l'); }
+
 /* Toggle line comment on the current line, or on every line covered by the
  * mark region when mark is set (M-;).
  *

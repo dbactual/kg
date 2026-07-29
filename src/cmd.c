@@ -126,6 +126,10 @@ static void cmd_upcase_word(int fd)    { (void)fd; editor_upcase_word();     }
 static void cmd_downcase_word(int fd)  { (void)fd; editor_downcase_word();   }
 static void cmd_capitalize_word(int fd){ (void)fd; editor_capitalize_word(); }
 
+/* Upcase/downcase the active region (C-x C-u / C-x C-l). */
+static void cmd_upcase_region(int fd)   { (void)fd; editor_upcase_region();   }
+static void cmd_downcase_region(int fd) { (void)fd; editor_downcase_region(); }
+
 /* Set the current buffer's fill column, prompting for the value (C-x f). */
 static void cmd_set_fill_column(int fd)         { editor_set_fill_column(fd);          }
 
@@ -257,6 +261,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "capitalize-word",          cmd_capitalize_word,         CMD_EDITS_BUFFER },
 	{ "delete-horizontal-space",  cmd_delete_horizontal_space, CMD_EDITS_BUFFER },
 	{ "delete-trailing-space",    cmd_delete_trailing_space,   CMD_EDITS_BUFFER },
+	{ "downcase-region",          cmd_downcase_region,         CMD_EDITS_BUFFER },
 	{ "downcase-word",            cmd_downcase_word,           CMD_EDITS_BUFFER },
 	{ "enlarge-window",           cmd_enlarge_window,          CMD_NONE },
 	{ "enlarge-window-horizontally", cmd_enlarge_window_h,     CMD_NONE },
@@ -283,6 +288,7 @@ static const struct named_cmd cmdtable[] = {
 	{ "sort-lines",               cmd_sort_lines,              CMD_EDITS_BUFFER },
 	{ "toggle-read-only",         cmd_toggle_read_only,        CMD_NONE },
 	{ "transpose-chars",          cmd_transpose_chars,         CMD_EDITS_BUFFER },
+	{ "upcase-region",            cmd_upcase_region,           CMD_EDITS_BUFFER },
 	{ "upcase-word",              cmd_upcase_word,             CMD_EDITS_BUFFER },
 	{ "vc-diff",                  cmd_vc_diff,                 CMD_NONE },
 	{ "vc-dir",                   cmd_vc_dir,                  CMD_NONE },

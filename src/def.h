@@ -698,6 +698,8 @@ void editor_join_line(void);
 void editor_upcase_word(void);
 void editor_downcase_word(void);
 void editor_capitalize_word(void);
+void editor_upcase_region(void);
+void editor_downcase_region(void);
 void editor_reflow_paragraph(void);
 void editor_set_fill_column(int fd);
 void editor_comment_dwim(void);
