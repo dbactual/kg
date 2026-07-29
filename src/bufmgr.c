@@ -25,6 +25,31 @@ int buf_current = 0;
 static int ibuf_origin_buf = -1;
 int buf_count   = 0;
 
+/* Most-recently-used buffer slots, front = most recent.  C-x b lists
+ * candidates in this order so the pre-selected default is the previous
+ * buffer (repeated C-x b RET flips between two buffers, like Emacs
+ * switch-to-buffer). */
+static int buf_mru[MAX_BUFFERS];
+static int buf_mru_len = 0;
+
+/* Move slot `idx` to the front of the MRU list (append if new). */
+static void buf_mru_touch(int idx)
+{
+	int i, pos = -1;
+
+	if (idx < 0 || idx >= MAX_BUFFERS) return;
+	for (i = 0; i < buf_mru_len; i++)
+		if (buf_mru[i] == idx) { pos = i; break; }
+	if (pos == 0) return;                 /* already most recent */
+	if (pos > 0) {
+		for (i = pos; i > 0; i--) buf_mru[i] = buf_mru[i-1];
+	} else {
+		if (buf_mru_len < MAX_BUFFERS) buf_mru_len++;
+		for (i = buf_mru_len - 1; i > 0; i--) buf_mru[i] = buf_mru[i-1];
+	}
+	buf_mru[0] = idx;
+}
+
 #define AUTOREVERT_POLL_INTERVAL_SEC 2
 
 static void silent_revert_current(void);
@@ -85,6 +110,7 @@ void buf_restore_from_slot(int idx)
 	editor.scratch = b->scratch;
 	editor.fill_column = b->fill_column;
 	buf_current = idx;
+	buf_mru_touch(idx);
 	/* Keep the active window pointing at the newly-restored buffer. */
 	if (win_count > 0)
 		winlist[win_current].bufidx = idx;
@@ -846,6 +872,7 @@ void buf_load_args(int nfiles, char **filenames, int readonly)
 		slot++;
 	}
 	buf_restore_from_slot(0);
+	buf_mru_touch(0);
 }
 
 /* Interactive buffer selector shown in the echo area (C-x b).
@@ -866,10 +893,22 @@ void buf_select_interactive(int fd)
 
 	query[0] = '\0';
 
-	/* Build ring starting from the buffer after current (most natural default). */
-	for (i = 1; i <= MAX_BUFFERS; i++) {
-		int idx = (buf_current + i) % MAX_BUFFERS;
-		if (buflist[idx].active) order[n++] = idx;
+	/* Build the candidate list in most-recently-used order, excluding
+	 * the current buffer, so the default (sel = 0) is the previous
+	 * buffer.  Repeated C-x b RET then flips between two buffers, like
+	 * Emacs switch-to-buffer.  Buffers not yet in the MRU list (never
+	 * activated) are appended in slot order. */
+	for (i = 0; i < buf_mru_len; i++) {
+		int idx = buf_mru[i];
+		if (idx >= 0 && idx < MAX_BUFFERS && buflist[idx].active &&
+		    idx != buf_current)
+			order[n++] = idx;
+	}
+	for (i = 0; i < MAX_BUFFERS && n < MAX_BUFFERS - 1; i++) {
+		int j, seen = 0;
+		if (!buflist[i].active || i == buf_current) continue;
+		for (j = 0; j < n; j++) if (order[j] == i) { seen = 1; break; }
+		if (!seen) order[n++] = i;
 	}
 	if (n == 0) {
 		editor_set_status_message("No other buffers.");
