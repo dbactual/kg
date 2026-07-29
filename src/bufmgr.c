@@ -1374,17 +1374,22 @@ static void buf_list_populate(void)
 
 	for (i = 0; i < MAX_BUFFERS; i++) {
 		struct editor_buffer *b = &buflist[i];
+		char disp[256];
 		if (!b->active) continue;
 
 		modename = b->syntax ? b->syntax->name : "Fundamental";
 		size = 0;
 		for (j = 0; j < b->numrows; j++) size += b->row[j].size;
 
+		/* Show the path with $HOME abbreviated to ~, like the mode
+		 * line, to keep the column narrow. */
+		buf_display_full_name(i, disp, sizeof(disp));
+
 		len = snprintf(line, sizeof(line), " %c  %-24s  %6d  %-14s  %s",
 			b->dirty ? '*' : ' ',
 			buf_basename(b->filename),
 			size, modename,
-			b->filename ? b->filename : "");
+			b->filename ? disp : "");
 		editor_insert_row(editor.numrows, line, len);
 	}
 }
@@ -1397,14 +1402,18 @@ static void buf_list_populate(void)
 void buf_open_list(void)
 {
 	int prev = buf_current;
-	const char *prevfile =
-		(prev >= 0 && \
-			prev < MAX_BUFFERS && \
-			buflist[prev].active && \
-			buflist[prev].filename)
-		? buflist[prev].filename : NULL;
+	char prevfile_buf[256];
+	const char *prevfile = NULL;
 	int i, nbuf = 0, panel_h, slot;
 	int already_open = 0;
+
+	/* Match rows by their display name (~ for $HOME), so keep the
+	 * previous buffer's display name for pre-selection. */
+	if (prev >= 0 && prev < MAX_BUFFERS && buflist[prev].active &&
+	    buflist[prev].filename) {
+		buf_display_full_name(prev, prevfile_buf, sizeof(prevfile_buf));
+		prevfile = prevfile_buf;
+	}
 
 	/* Count active buffers to size the panel. */
 	for (i = 0; i < MAX_BUFFERS; i++)
@@ -1550,9 +1559,13 @@ void buf_ibuffer_select(void)
 	if (!filename[0]) return;
 	if (strcmp(filename, IBUF_NAME) == 0) return; /* don't recurse */
 
+	/* The column shows the display name (with ~ for $HOME), so match
+	 * against buf_display_full_name rather than the raw path. */
 	for (i = 0; i < MAX_BUFFERS; i++) {
+		char disp[256];
 		if (!buflist[i].active || !buflist[i].filename) continue;
-		if (strcmp(buflist[i].filename, filename) == 0) {
+		buf_display_full_name(i, disp, sizeof(disp));
+		if (strcmp(disp, filename) == 0) {
 			buf_ibuffer_close_panel();
 			buf_save_current_state();
 			buf_restore_from_slot(i);
