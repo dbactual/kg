@@ -23,6 +23,11 @@ int buf_current = 0;
 /* Buffer that was current when the *Buffer List* was last opened, so
  * q (buf_ibuffer_close) can return to it.  -1 = none recorded. */
 static int ibuf_origin_buf = -1;
+
+/* Window the *Buffer List* panel was carved from (win_current before
+ * win_split_bottom), so closing the panel returns focus to the pane the
+ * user was actually in -- not the first/original pane.  -1 = none. */
+static int ibuf_origin_win = -1;
 int buf_count   = 0;
 
 /* Most-recently-used buffer slots, front = most recent.  C-x b lists
@@ -1469,8 +1474,10 @@ void buf_open_list(void)
 
 	/* Remember where to return on q -- but not when merely refreshing
 	 * an already-open list, when buf_current IS the list itself. */
-	if (!already_open)
+	if (!already_open) {
 		ibuf_origin_buf = prev;
+		ibuf_origin_win = win_current;
+	}
 
 	if (!already_open) {
 		/* Size: buffers + 2 header rows, capped at half the screen. */
@@ -1556,12 +1563,20 @@ static int buf_ibuffer_close_panel(void)
 	if (win_count <= 1) return 0;
 
 	ibuf_win = win_current;
-	for (j = 0; j < MAX_WINDOWS; j++) {
-		if (j != ibuf_win && winlist[j].active) {
-			win_focus(j);
-			break;
+	/* Return focus to the window the panel was carved from (the pane
+	 * the user was in when they opened the list), not the first pane.
+	 * Fall back to the first active window if that slot is gone. */
+	if (ibuf_origin_win >= 0 && ibuf_origin_win < MAX_WINDOWS &&
+	    ibuf_origin_win != ibuf_win && winlist[ibuf_origin_win].active)
+		win_focus(ibuf_origin_win);
+	else
+		for (j = 0; j < MAX_WINDOWS; j++) {
+			if (j != ibuf_win && winlist[j].active) {
+				win_focus(j);
+				break;
+			}
 		}
-	}
+	ibuf_origin_win = -1;
 	/* Return the panel's rows to the window it was carved from,
 	 * preserving any pre-existing split layout; fall back to a
 	 * full-screen reclaim only when the layout no longer tiles. */

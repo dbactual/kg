@@ -4,6 +4,7 @@ import argparse
 import difflib
 import io
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -54,6 +55,7 @@ class Case:
 	dimensions: tuple[int, int]
 	expected_screen_contains: list[str] | None
 	expected_screen_not_contains: list[str] | None
+	expected_cursor_at: tuple[int, int] | None
 	file_mode: int | None
 
 
@@ -211,6 +213,20 @@ def decode_text(data: bytes) -> str:
 	return data.decode("utf-8", "replace")
 
 
+# A cursor-position report: ESC[<row>;<col>H .  The last one in the
+# transcript is where kg left the hardware cursor -- i.e. the active
+# window's cursor, which identifies the focused pane after window ops.
+_CURSOR_RE = re.compile(rb"\x1b\[(\d+);(\d+)H")
+
+
+def final_cursor_pos(transcript: bytes) -> tuple[int, int] | None:
+	matches = _CURSOR_RE.findall(transcript)
+	if not matches:
+		return None
+	row, col = matches[-1]
+	return (int(row), int(col))
+
+
 def diff_text(expected: bytes, actual: bytes, expected_name: str, actual_name: str) -> str:
 	return "".join(difflib.unified_diff(
 		decode_text(expected).splitlines(True),
@@ -281,6 +297,14 @@ def load_case(path: Path) -> Case:
 	):
 		raise ValueError(f"{path}: expected_screen_not_contains must be a list of strings")
 
+	cursor_at = data.get("expected_cursor_at")
+	if cursor_at is not None:
+		if (not isinstance(cursor_at, list) or len(cursor_at) != 2 or
+		    not all(isinstance(v, int) and v > 0 for v in cursor_at)):
+			raise ValueError(
+				f"{path}: expected_cursor_at must be [row, col] with positive integers")
+		cursor_at = (cursor_at[0], cursor_at[1])
+
 	file_mode = data.get("file_mode")
 	if file_mode is not None:
 		file_mode = int(str(file_mode), 8)
@@ -308,6 +332,7 @@ def load_case(path: Path) -> Case:
 		dimensions=(dimensions[0], dimensions[1]),
 		expected_screen_contains=screen_contains,
 		expected_screen_not_contains=screen_not_contains,
+		expected_cursor_at=cursor_at,
 		file_mode=file_mode,
 	)
 
@@ -533,6 +558,13 @@ def evaluate_case(case: Case, kg_argv: list[str], features: set[str], timeout: f
 			if unexpected:
 				msg.append("unexpected screen text: " + ", ".join(repr(s) for s in unexpected))
 			details = "; ".join(msg)
+
+	if passed and case.expected_cursor_at is not None:
+		pos = final_cursor_pos(kg_run.transcript)
+		if pos != case.expected_cursor_at:
+			passed = 0
+			details = (f"final cursor at {pos}, "
+				   f"expected {case.expected_cursor_at}")
 
 	if passed and case.expected_exit_code is not None:
 		if kg_run.exit_code != case.expected_exit_code:

@@ -1,0 +1,34 @@
+name: ibuf-select-opens-in-current-pane
+filename: aa.txt
+config_files:
+  bb.txt: "BBB\n"
+dimensions: [24, 80]
+initial: |
+  AAA
+startup_delay: 0.4
+key_delay: 0.05
+keys:
+  # Split side by side, move to the right pane, open bb.txt there, then
+  # open the buffer list and select aa.txt with RET.
+  - C-x
+  - "3"
+  - C-x
+  - o
+  - C-x
+  - C-f
+  - bb.txt
+  - RET
+  - C-x
+  - C-b
+  - RET
+trailer_keys: [C-x, C-c]
+expected_saved_any:
+  - |
+    AAA
+  - |
+    BBB
+# The selected buffer must open in the pane the user was in (the right
+# pane), not the first/original pane.  The final cursor column proves the
+# focus: for an 80-col screen C-x 3 puts the right pane's content at col
+# 41+; the buggy behaviour returned focus to the left pane (col 1).
+expected_cursor_at: [1, 41]
