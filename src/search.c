@@ -500,9 +500,14 @@ void editor_query_replace(int fd)
 			 * the capitalisation of the matched text, like Emacs.
 			 *   - all-upper -> upper-case the replacement
 			 *   - initial-cap -> capitalise the replacement
-			 *   - otherwise   -> use the replacement verbatim */
+			 *   - otherwise   -> use the replacement verbatim
+			 * Emacs only does this when the search was case-insensitive
+			 * (an all-lowercase search string, case-fold-search on).
+			 * When the search string itself has uppercase (fold == 0),
+			 * the match is exact and the replacement is used verbatim --
+			 * so replacing TRUE with "true" really yields "true". */
 			strcpy(rep, replace);
-			if (slen > 0) {
+			if (slen > 0 && fold) {
 				int all_upper = 1, cap = isupper((unsigned char)matched[0]);
 				for (i = 0; i < slen; i++)
 					if (!isupper((unsigned char)matched[i]))
