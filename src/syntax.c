@@ -1394,7 +1394,7 @@ void editor_update_syntax(erow *row)
  *   - $TERM contains "truecolor", "24bit", "kitty", "alacritty", "wezterm"
  *   - else assume no truecolor and use nearest 256-cube fallback
  */
-static int vc_dark_background(void)
+int vc_dark_background(void)
 {
 	const char *bg, *p;
 
@@ -1417,7 +1417,7 @@ static int vc_dark_background(void)
 	return 0;
 }
 
-static int vc_truecolor(void)
+int vc_truecolor(void)
 {
 	const char *ct, *term;
 

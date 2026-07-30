@@ -673,6 +673,8 @@ int is_separator(int c);
 int editor_row_has_open_comment(erow *row);
 void editor_update_syntax(erow *row);
 const char *editor_syntax_to_color(int hl);
+int  vc_dark_background(void);
+int  vc_truecolor(void);
 void editor_select_syntax_highlight(char *filename);
 int  syntax_path_matches_lang(const char *path, const char *lang);
 

@@ -111,6 +111,31 @@ int render_col_to_chars(erow *row, int render_col)
  * is_full_width: if true we can use \x1b[0K (erase to EOL) to clear the
  * rest of each row; if false (vertical split) we must space-pad to stay
  * within the window's column range. */
+
+/* Region face: a muted, business-like grey-blue instead of reverse
+ * video.  Follows the same dark/light + truecolor detection as the mode
+ * line; without truecolor, plain reverse video remains the fallback. */
+static const char *region_sgr(void)
+{
+	static char seq[48];
+	static int ready = 0;
+
+	if (!ready) {
+		int dark = vc_dark_background();
+		int tc = vc_truecolor();
+		if (tc && dark)
+			snprintf(seq, sizeof seq,
+				 "\x1b[48;2;63;81;105m\x1b[38;2;235;235;235m");
+		else if (tc)
+			snprintf(seq, sizeof seq,
+				 "\x1b[48;2;160;175;195m\x1b[38;2;20;20;20m");
+		else
+			snprintf(seq, sizeof seq, "\x1b[7m");
+		ready = 1;
+	}
+	return seq;
+}
+
 static void draw_window_rows(struct abuf *ab,
 	int win_y, int win_x, int win_h, int win_w,
 	int rowoff, int coloff, int numrows, erow *rows,
@@ -288,11 +313,20 @@ static void draw_window_rows(struct abuf *ab,
 				 * bytes so an escape can never split a multi-byte
 				 * glyph; the next start byte will catch up. */
 				if (want_rev != current_reverse && !utf8_is_cont(c[j])) {
-					if (want_rev) ab_append(ab, "\x1b[7m",  4);
-					else          ab_append(ab, "\x1b[27m", 5);
+					if (want_rev) {
+						const char *rs = region_sgr();
+						ab_append(ab, rs, (int)strlen(rs));
+					} else {
+						ab_append(ab, "\x1b[0m", 4);
+						current_color = NULL;
+					}
 					current_reverse = want_rev;
 				}
-				if (hl[j] == HL_NONPRINT) {
+				if (current_reverse) {
+					/* Inside the region: uniform grey-blue face,
+					 * no per-cell syntax color. */
+					ab_append(ab, c+j, 1);
+				} else if (hl[j] == HL_NONPRINT) {
 					unsigned char uc = c[j];
 					char sym;
 					ab_append(ab, "\x1b[7m", 4);
@@ -352,22 +386,26 @@ static void draw_window_rows(struct abuf *ab,
 
 					if (skip > 0) {
 						if (current_reverse) {
-							ab_append(ab, "\x1b[27m", 5);
+							ab_append(ab, "\x1b[0m", 4);
 							current_reverse = 0;
+							current_color = NULL;
 						}
 						ab_append_spaces(ab, skip);
 					}
 					if (rev > 0) {
 						if (!current_reverse) {
-							ab_append(ab, "\x1b[7m", 4);
+							const char *rs = region_sgr();
+							ab_append(ab, rs, (int)strlen(rs));
 							current_reverse = 1;
 						}
 						ab_append_spaces(ab, rev);
 					}
 				}
 			}
-			if (current_reverse)
-				ab_append(ab, "\x1b[27m", 5);
+			if (current_reverse) {
+				ab_append(ab, "\x1b[0m", 4);
+				current_color = NULL;
+			}
 		}
 		/* If the last rendered character was a search-match highlight,
 		 * its background colour is still active; a plain \x1b[39m
@@ -383,6 +421,38 @@ static void draw_window_rows(struct abuf *ab,
 			ab_append_spaces(ab, win_w - vcol_used);
 		}
 	}
+}
+
+/* Mode-line face: a soft grey box instead of the stark-white reverse
+ * video.  Active windows get a medium grey, inactive a darker (or
+ * lighter) shade.  Colors follow the same dark/light + truecolor
+ * detection as syntax highlighting; without truecolor fall back to the
+ * basic reverse/dim attributes. */
+static const char *modeline_sgr(int is_active)
+{
+	static char seq[2][48];
+	static int ready = 0;
+
+	if (!ready) {
+		int dark = vc_dark_background();
+		int tc = vc_truecolor();
+		if (tc && dark) {
+			/* Active: light-grey box, dark text -- Emacs' grey75
+			 * mode-line, clearly grey but nowhere near dark.  Inactive:
+			 * a mid grey so the active window still stands out. */
+			snprintf(seq[1], sizeof seq[1], "\x1b[48;2;190;190;190m\x1b[38;2;20;20;20m");
+			snprintf(seq[0], sizeof seq[0], "\x1b[48;2;68;68;68m\x1b[38;2;170;170;170m");
+		} else if (tc) {
+			snprintf(seq[1], sizeof seq[1], "\x1b[48;2;200;200;200m\x1b[38;2;0;0;0m");
+			snprintf(seq[0], sizeof seq[0], "\x1b[48;2;228;228;228m\x1b[38;2;110;110;110m");
+		} else {
+			/* No truecolor: reverse for active, dim for inactive. */
+			snprintf(seq[1], sizeof seq[1], "\x1b[7m");
+			snprintf(seq[0], sizeof seq[0], "\x1b[2m");
+		}
+		ready = 1;
+	}
+	return seq[is_active ? 1 : 0];
 }
 
 /* Render the mode line for one window at terminal row ml_row, starting at
@@ -423,7 +493,10 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 		snprintf(pos, sizeof(pos), "%d%%", rowoff * 100 / total_rows);
 
 	ab_move_to(ab, ml_row, win_x);
-	ab_append(ab, is_active ? "\x1b[7m" : "\x1b[2m", 4); /* active: reverse; inactive: dim */
+	{
+		const char *ml_sgr = modeline_sgr(is_active);
+		ab_append(ab, ml_sgr, (int)strlen(ml_sgr));
+	}
 
 	/* Read-only shows as %%/%* in the flag field, like GNU Emacs. */
 	if (readonly)
@@ -438,9 +511,19 @@ static void draw_mode_line(struct abuf *ab, int ml_row, int win_x, int win_w,
 		flags, bname, changed,
 		pos, cur_row, cur_col, modename, mc_tag);
 
-	if (len > win_w) len = win_w;
-	ab_append(ab, status, len);
-	ab_append_spaces(ab, win_w - len);
+	/* Brand the far right of every mode line with " meg".  Reserve the
+	 * space when the window is wide enough; a very narrow window just
+	 * clips the status text as before. */
+	if (win_w > 6) {
+		if (len > win_w - 4) len = win_w - 4;
+		ab_append(ab, status, len);
+		ab_append_spaces(ab, win_w - 4 - len);
+		ab_append(ab, " meg", 4);
+	} else {
+		if (len > win_w) len = win_w;
+		ab_append(ab, status, len);
+		ab_append_spaces(ab, win_w - len);
+	}
 	ab_append(ab, "\x1b[0m", 4);
 }
 
@@ -505,9 +588,13 @@ void editor_refresh_screen(void)
 				ab_move_to(&ab, row, sep_col);
 				ab_append(&ab, "\xe2\x94\x82", 3); /* │ */
 			}
-			/* Mode line row: invert to blend with the mode line. */
+			/* Mode line row: blend the separator into the mode line
+			 * with the same grey face. */
+			const char *ml_sgr = modeline_sgr(is_active);
 			ab_move_to(&ab, ml_row, sep_col);
-			ab_append(&ab, "\x1b[7m\xe2\x94\x82\x1b[0m", 11);
+			ab_append(&ab, ml_sgr, (int)strlen(ml_sgr));
+			ab_append(&ab, "\xe2\x94\x82", 3);
+			ab_append(&ab, "\x1b[0m", 4);
 		}
 	}
 
