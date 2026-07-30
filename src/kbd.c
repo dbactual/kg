@@ -67,8 +67,8 @@ static int handle_universal_arg(int c)
 }
 
 /* Map a shift+motion key to its unshifted motion, or 0 when `c` is not
- * one.  Shift+motion extends a shift-selected region instead of tearing
- * it down; the motion itself dispatches like the unshifted key. */
+ * one.  Shift-selection is gone: a shift+motion key now moves point
+ * exactly like the unshifted key, with no region side effects. */
 static int shift_motion_base(int c)
 {
 	switch (c) {
@@ -162,7 +162,6 @@ void editor_process_keypress(int fd)
 	int c = editor_read_key_idle(fd);
 	char *fname_before = editor.filename;
 	int dirty_before = editor.dirty;
-	int was_shift_select = editor.shift_select;
 	long elapsed;
 	int base = 0;
 	int n;
@@ -192,7 +191,6 @@ void editor_process_keypress(int fd)
 		editor.proj_prefix = 0;
 		editor.cc_prefix = 0;
 		editor.mark_highlight = 0;
-		editor.shift_select = 0;
 		return;
 	}
 	if (c == MOUSE_WHEEL_UP)   { editor_mouse_wheel(-1); return; }
@@ -470,18 +468,11 @@ void editor_process_keypress(int fd)
 					  editor.mc_count);
 	}
 
-	/* Shift+motion: drop the mark at the current position the first
-	 * time the user starts a shift-selected region, so subsequent
-	 * shift+motion extends it.  If a region is already on-screen we
-	 * just extend.  The key then dispatches as the unshifted motion. */
+	/* Shift+motion: plain movement, no region.  Translate the key to
+	 * its unshifted motion and dispatch that. */
 	base = shift_motion_base(c);
-	if (base) {
-		if (!editor.mark_highlight) {
-			editor_set_mark_silent();
-			editor.shift_select = 1;
-		}
+	if (base)
 		c = base;
-	}
 
 	/* Regular key processing */
 	switch (c) {
@@ -923,19 +914,6 @@ void editor_process_keypress(int fd)
 		editor_snap_cx_to_row();
 	}
 	editor.keep_region = 0;
-
-	/* Tear down a shift-selected region after the command has had its
-	 * say.  Done last so C-w / M-w / C-x C-x can still see the mark
-	 * during their dispatch.  Extender keys keep the region alive; a
-	 * C-x prefix keystroke also keeps it (the follow-up may consume
-	 * the region). */
-	if (was_shift_select && !editor.cx_prefix && !base) {
-		editor.shift_select = 0;
-		editor.mark_set = 0;
-		editor.mark_highlight = 0;
-		editor.rect_mode = 0;
-		editor_snap_cx_to_row();
-	}
 
 	/* Goal column is only valid between consecutive vertical motions —
 	 * any other key invalidates it.  Keep-list mirrors every key that

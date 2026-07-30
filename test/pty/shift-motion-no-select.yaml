@@ -1,0 +1,13 @@
+name: shift-motion-is-plain-movement
+filename: shift.txt
+initial: |
+  hello world
+keys:
+  # S-Right x3 used to shift-select "hel"; now it is plain movement.
+  # Typing X must insert at the cursor (col 3), not replace a region.
+  - S-RIGHT
+  - S-RIGHT
+  - S-RIGHT
+  - X
+expected_saved: |
+  helXlo world

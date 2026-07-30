@@ -31,3 +31,13 @@ void editor_set_status_message(const char *fmt, ...) { (void)fmt; }
  * shell.o provides the real implementation when linked (test_shell). */
 __attribute__((weak))
 void copy_to_clipboard(const char *text, int len) { (void)text; (void)len; }
+
+/* Stub for the minibuffer prompt used by rect.c editor_string_rect().
+ * Tests drive string-rectangle's edit path with a pre-set string, so
+ * the prompt just returns an empty string (the delete path). */
+int editor_read_line(int fd, const char *prompt, char *buf, int bufsize)
+{
+	(void)fd; (void)prompt;
+	if (bufsize > 0) buf[0] = '\0';
+	return 0;
+}

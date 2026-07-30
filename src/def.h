@@ -302,7 +302,6 @@ struct editor_config {
 	int mark_row;       /* Mark row position */
 	int mark_col;       /* Mark column position */
 	int mark_highlight; /* 1 when the region should render with reverse video. */
-	int shift_select;   /* 1 when the active region was started by shift+motion. */
 	int rect_mode;      /* 1 when the region should render as a rectangle. */
 	int rect_prefix;    /* 1 after C-x r, waiting for the rectangle op key. */
 	int proj_prefix;    /* 1 after C-x p, waiting for the project op key. */
@@ -410,7 +409,6 @@ struct editor_buffer {
 	int mark_set;
 	int mark_row, mark_col;
 	int mark_highlight;
-	int shift_select;
 	int rect_mode;
 	struct undo_stack undostack; /* per-buffer undo chain */
 	int active;                 /* 1 if this slot is in use */

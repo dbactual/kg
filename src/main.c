@@ -59,7 +59,6 @@ void init_editor(void)
 	editor.mark_row = 0;
 	editor.mark_col = 0;
 	editor.mark_highlight = 0;
-	editor.shift_select = 0;
 	editor.rect_mode = 0;
 	editor.rect_prefix = 0;
 	editor.desired_visual_col = -1;

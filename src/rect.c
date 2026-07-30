@@ -114,7 +114,6 @@ static void rect_deactivate(void)
 	editor.mark_set       = 0;
 	editor.mark_highlight = 0;
 	editor.rect_mode      = 0;
-	editor.shift_select   = 0;
 	editor_snap_cx_to_row();
 }
 

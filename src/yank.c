@@ -242,7 +242,6 @@ void editor_sort_lines(void)
 
 	editor.mark_highlight = 0;
 	editor.rect_mode = 0;
-	editor.shift_select = 0;
 	editor_snap_cx_to_row();
 	editor.dirty = 1;
 	editor_set_status_message("Sorted %d lines", nlines);
@@ -375,7 +374,6 @@ static void region_kill_or_delete(int save)
 	 * and the first-edit teardown in kbd.c). */
 	editor.mark_highlight = 0;
 	editor.rect_mode = 0;
-	editor.shift_select = 0;
 	free(text);
 	editor_set_status_message(save ? "Region killed" : "Region deleted");
 }
@@ -404,7 +402,6 @@ void editor_copy_region(void)
 	copy_to_clipboard(text, len);
 	editor.mark_highlight = 0;
 	editor.rect_mode = 0;
-	editor.shift_select = 0;
 	editor_snap_cx_to_row();
 	free(text);
 	editor_set_status_message("Region copied");

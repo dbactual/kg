@@ -110,6 +110,14 @@ def token_to_bytes(token: str) -> bytes:
 		return b"\x1b[1;2H"
 	if upper == "S-END":
 		return b"\x1b[1;2F"
+	if upper == "S-UP":
+		return b"\x1b[1;2A"
+	if upper == "S-DOWN":
+		return b"\x1b[1;2B"
+	if upper == "S-RIGHT":
+		return b"\x1b[1;2C"
+	if upper == "S-LEFT":
+		return b"\x1b[1;2D"
 
 	if len(token) >= 3 and token[1] == "-":
 		prefix = token[0].upper()
