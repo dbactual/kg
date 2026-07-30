@@ -1,0 +1,19 @@
+name: mc-newline-at-eol-tracking
+filename: mc-nleol.txt
+initial: |
+  foo bar
+  foo baz
+keys:
+  # C-e then C-c m j puts both cursors at EOL.  RET opens a blank line
+  # under each; Z lands on both blank lines.
+  - C-e
+  - C-c
+  - m
+  - j
+  - RET
+  - Z
+expected_saved: |
+  foo bar
+  Z
+  foo baz
+  Z

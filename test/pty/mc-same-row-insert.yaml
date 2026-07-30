@@ -1,0 +1,19 @@
+name: mc-same-row-insert-tracking
+filename: mc-samerow.txt
+initial: |
+  foo foo
+  bar
+keys:
+  # mark-all "foo" puts two cursors on line 0 (cols 0 and 4).  C-f x3
+  # moves each to the end of its foo, then X inserts at both.  The
+  # higher (second) cursor's insert shifts the lower result's column.
+  - C-c
+  - m
+  - a
+  - C-f
+  - C-f
+  - C-f
+  - X
+expected_saved: |
+  fooX fooX
+  bar

@@ -1,0 +1,18 @@
+name: mc-backspace-join-tracking
+filename: mc-join.txt
+initial: |
+  foo
+  bar
+  baz
+keys:
+  # cursor on bar (line 1), C-c m j adds one on baz (line 2), backspace
+  # joins each line onto the previous (cascading).  Typing | lands after
+  # foo AND after bar -- the join adjustment keeps both positions right.
+  - C-n
+  - C-c
+  - m
+  - j
+  - C-?
+  - "|"
+expected_saved: |
+  foo|bar|baz

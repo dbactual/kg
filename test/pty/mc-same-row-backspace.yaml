@@ -1,0 +1,23 @@
+name: mc-same-row-backspace-tracking
+filename: mc-samerowbs.txt
+initial: |
+  aa aa
+  bar
+keys:
+  # mark-all "aa" puts two cursors on line 0 (cols 0 and 3).  C-f moves
+  # each right (cols 1 and 4).  Backspace deletes the char before each
+  # (the first 'a' of each "aa").  The lower (col 1) cursor's delete
+  # must shift the higher (col 4) result left by one -- both lose one a.
+  - C-c
+  - m
+  - a
+  - C-f
+  - C-?
+  # Now type | at each cursor.  Backspace leaves each cursor where the
+  # deleted char was (before the following 'a').  Without the column
+  # adjustment the higher cursor's stored position is stale (off by one
+  # after the lower cursor's delete), so | lands in the wrong spot.
+  - "|"
+expected_saved: |
+  |a |a
+  bar

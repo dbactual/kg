@@ -24,12 +24,35 @@ For a parallel-capable keystroke:
 
 1. Merge the primary cursor into the set.
 2. Sort descending by (row, col).
-3. Apply the edit at each cursor, highest first. Descending order means
-   an edit never shifts the positions of cursors not yet processed --
-   no marker machinery needed. Newlines (shift rows down) and same-row
-   insertions (shift cols right) both fall out of this for free.
+3. Apply the edit at each cursor, highest first. Descending order keeps
+   the UNPROCESSED cursors valid (they sit above-left of each edit).
 4. Each cursor's new position = the natural end of its own edit.
-5. Dedupe overlaps, extract the primary, redraw.
+5. After each edit, adjust the already-computed RESULT positions for
+   that edit's effect (see "Position adjustment" below).
+6. Dedupe overlaps, extract the primary, redraw.
+
+## Position adjustment
+
+Descending order protects the unprocessed cursors, but NOT the result
+positions of already-processed ones: splitting a higher line pushes a
+lower result down a row, deleting a column left of a higher result pulls
+it left.  So every edit records its effect (kind + coordinates) and
+mc_run applies it to all previously computed results before the next
+cursor is processed:
+
+  kind 1  column edit: bytes right of a point shift (insert/delete char)
+  kind 2  line split: rows below +1; same-row text right of the split
+          moves to (row+1, col-split)
+  kind 3  join-prev (backspace at BOL): row r merges onto r-1
+  kind 4  join-next (delete at EOL): row r+1 merges onto r
+  kind 5  text insert (yank): K newlines, last-line length L
+
+Without this, RET (and joins) left secondary cursors on stale positions
+-- e.g. two cursors, RET, and the lower cursor stayed on the blank line
+instead of following its text down.  Regression tests:
+mc-newline-cursor-tracking, mc-newline-eol-tracking,
+mc-backspace-join, mc-same-row-backspace (each fails with the
+adjustment disabled).
 
 ## Parallel command set (v1)
 

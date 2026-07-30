@@ -1,0 +1,20 @@
+name: mc-newline-cursor-tracking
+filename: mc-nltrack.txt
+initial: |
+  aaa
+  bbb
+keys:
+  # C-c m j adds a cursor on the line below, RET splits both lines at
+  # col 0.  The higher line's split must push the lower cursor's result
+  # down a row; typing X lands before BOTH aaa and bbb (not on a stale
+  # blank line).  This is the RET cursor-tracking regression.
+  - C-c
+  - m
+  - j
+  - RET
+  - X
+expected_saved: |
+
+  Xaaa
+
+  Xbbb

@@ -138,6 +138,77 @@ static void mc_store_sorted(int *rows, int *cols, int n, int primary_idx)
 
 /* --- parallel primitives --------------------------------------------- */
 
+/* Edit-effect bookkeeping for position adjustment.  mc_run processes
+ * cursors in descending (row, col) order, which keeps the UNPROCESSED
+ * cursors valid (they sit above-left of each edit).  But the RESULT
+ * positions of already-processed cursors can still be shifted by a later
+ * edit: splitting a higher line pushes a lower result down a row, and
+ * inserting a char on the same row pushes a higher result right a
+ * column.  Each edit function records its effect here; mc_run then
+ * adjusts every previously computed result before moving on.
+ *
+ * Kinds:
+ *   0  no effect
+ *   1  column edit on (adj_row): bytes at [adj_col ...) shift by adj_d
+ *   2  line split at (adj_row, adj_col): rows below move down 1; same-row
+ *      text right of adj_col moves to (adj_row+1, col-adj_col)
+ *   3  join-prev: row adj_row merged onto row-1 at byte adj_merge
+ *   4  join-next: row adj_row+1 merged onto adj_row at byte adj_merge
+ *   5  text insert at (adj_row, adj_col): adj_d newlines, last-line
+ *      length adj_merge
+ */
+static int mc_adj_kind;
+static int mc_adj_row, mc_adj_col, mc_adj_d, mc_adj_merge;
+
+static void mc_adjust_prior(int *rows, int *cols, int count)
+{
+	int j;
+
+	if (mc_adj_kind == 0) return;
+	for (j = 0; j < count; j++) {
+		switch (mc_adj_kind) {
+		case 1:
+			if (rows[j] == mc_adj_row && cols[j] >= mc_adj_col) {
+				cols[j] += mc_adj_d;
+				if (cols[j] < 0) cols[j] = 0;
+			}
+			break;
+		case 2:
+			if (rows[j] > mc_adj_row) {
+				rows[j]++;
+			} else if (rows[j] == mc_adj_row && cols[j] > mc_adj_col) {
+				rows[j]++;
+				cols[j] -= mc_adj_col;
+			}
+			break;
+		case 3:
+			if (rows[j] == mc_adj_row) {
+				rows[j]--;
+				cols[j] += mc_adj_merge;
+			} else if (rows[j] > mc_adj_row) {
+				rows[j]--;
+			}
+			break;
+		case 4:
+			if (rows[j] == mc_adj_row + 1) {
+				rows[j]--;
+				cols[j] += mc_adj_merge;
+			} else if (rows[j] > mc_adj_row + 1) {
+				rows[j]--;
+			}
+			break;
+		case 5:
+			if (rows[j] > mc_adj_row) {
+				rows[j] += mc_adj_d;
+			} else if (rows[j] == mc_adj_row && cols[j] > mc_adj_col) {
+				rows[j] += mc_adj_d;
+				cols[j] = cols[j] - mc_adj_col + mc_adj_merge;
+			}
+			break;
+		}
+	}
+}
+
 /* Apply one edit at absolute (row, col), leaving the "cursor" at the
  * natural end of the edit.  These bypass the window-relative editor
  * machinery and work directly on rows, so they are safe to run at many
@@ -152,6 +223,7 @@ static void mc_insert_char_at(int row, int col, int c, int *orow, int *ocol)
 	r = &editor.row[row];
 	if (col > r->size) col = r->size;
 	editor_row_insert_char(r, col, c);
+	mc_adj_kind = 1; mc_adj_row = row; mc_adj_col = col; mc_adj_d = 1;
 	*orow = row;
 	*ocol = col + 1;
 }
@@ -175,6 +247,8 @@ static void mc_backspace_at(int row, int col, int arg, int *orow, int *ocol)
 			start--;
 		n = col - start;
 		while (n--) editor_row_del_char(r, start);
+		mc_adj_kind = 1; mc_adj_row = row; mc_adj_col = col;
+		mc_adj_d = -(col - start);
 		*orow = row;
 		*ocol = start;
 	} else if (row > 0) {
@@ -187,6 +261,7 @@ static void mc_backspace_at(int row, int col, int arg, int *orow, int *ocol)
 		p->chars[p->size] = '\0';
 		editor_update_row(p);
 		editor_del_row(row);
+		mc_adj_kind = 3; mc_adj_row = row; mc_adj_merge = prevlen;
 		*orow = row - 1;
 		*ocol = prevlen;
 	} else {
@@ -211,15 +286,18 @@ static void mc_del_forward_at(int row, int col, int arg, int *orow, int *ocol)
 			n++; pos++;
 		}
 		while (n--) editor_row_del_char(r, col);
+		mc_adj_kind = 1; mc_adj_row = row; mc_adj_col = col; mc_adj_d = -n;
 	} else if (row + 1 < editor.numrows) {
 		/* At EOL: pull the next row up (join). */
 		erow *next = &editor.row[row+1];
+		int merged = r->size;
 		r->chars = realloc(r->chars, r->size + next->size + 1);
 		memcpy(r->chars + r->size, next->chars, next->size);
 		r->size += next->size;
 		r->chars[r->size] = '\0';
 		editor_update_row(r);
 		editor_del_row(row + 1);
+		mc_adj_kind = 4; mc_adj_row = row; mc_adj_merge = merged;
 	}
 	*orow = row;
 	*ocol = (col > r->size) ? r->size : col;
@@ -244,6 +322,7 @@ static void mc_newline_at(int row, int col, int arg, int *orow, int *ocol)
 	r->chars[col] = '\0';
 	r->size = col;
 	editor_update_row(r);
+	mc_adj_kind = 2; mc_adj_row = row; mc_adj_col = col;
 	*orow = row + 1;
 	*ocol = 0;
 }
@@ -254,13 +333,22 @@ static void mc_insert_text_at(int row, int col, const char *text, int len,
 {
 	int cr = row, cc = col;
 	int i;
+	int newlines = 0, last_len = 0;
 
 	for (i = 0; i < len; i++) {
-		if (text[i] == '\n')
+		if (text[i] == '\n') {
+			newlines++;
+			last_len = 0;
 			mc_newline_at(cr, cc, 0, &cr, &cc);
-		else
+		} else {
+			last_len++;
 			mc_insert_char_at(cr, cc, text[i], &cr, &cc);
+		}
 	}
+	/* Summarize the whole insert as one adjustment (the per-char statics
+	 * set above only describe the last char, not the whole text). */
+	mc_adj_kind = 5; mc_adj_row = row; mc_adj_col = col;
+	mc_adj_d = newlines; mc_adj_merge = last_len;
 	*orow = cr;
 	*ocol = cc;
 }
@@ -345,8 +433,12 @@ static int mc_run(mc_edit_fn fn, int arg)
 	free(snap);
 
 	suppress_undo = 1;
-	for (i = 0; i < n; i++)
+	for (i = 0; i < n; i++) {
+		mc_adj_kind = 0;
 		fn(rows[i], cols[i], arg, &rows[i], &cols[i]);
+		/* Fix up the results computed so far for this edit's effect. */
+		mc_adjust_prior(rows, cols, i);
+	}
 	suppress_undo = 0;
 	undo_push_boundary();
 
