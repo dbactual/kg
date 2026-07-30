@@ -1,0 +1,24 @@
+name: mc-manual-isearch-then-add
+filename: mc-manis.txt
+initial: |
+  alpha
+  beta
+  gamma
+keys:
+  # collect at top, then isearch forward to "gamma" (isearch is
+  # navigation: collection survives it).  Isearch leaves point just
+  # AFTER the match, so the collected cursor is at end of "gamma".
+  - C-c
+  - m
+  - c
+  - C-s
+  - gamma
+  - RET
+  - C-c
+  - m
+  - c
+  - Z
+expected_saved: |
+  Zalpha
+  beta
+  gammaZ

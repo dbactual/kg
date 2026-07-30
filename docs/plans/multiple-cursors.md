@@ -70,11 +70,29 @@ so one C-_ undoes the whole stroke.
 
 ## Creating cursors
 
+Two-phase model: collection, then editing.
+
+Manual workflow:
+- `C-c m c`  drop a cursor at point and enter COLLECTION mode.
+  In collection mode only navigation keys keep collecting (char/line/
+  word/page movement, M-< M->, isearch, goto-line, mouse); everything
+  stays single-cursor so you can navigate freely between spots.  Press
+  `C-c m c` at each further position.  Collected cursors render with
+  the dim teal face.
+- The first NON-navigation key flips to EDIT mode (no separate "begin"
+  command) and runs in parallel at every cursor.  The current position
+  always participates once editing begins.  Cursors render vivid
+  magenta while editing.
+- Pressing `C-c m c` while editing drops back to collection mode (add
+  + reposition); the next non-navigation key resumes editing.
+
+Auto-select (begin editing immediately, no collection phase):
 - `C-c m n`  mark next occurrence of word-at-point (or region text)
 - `C-c m a`  mark all occurrences in the buffer
 - `C-c m j`  add cursor on line below
 - `C-c m k`  add cursor on line above
-- `C-g`      drop all extra cursors
+- `C-g`      drop all extra cursors and leave MC mode (works in both
+  phases)
 
 ## Rendering
 

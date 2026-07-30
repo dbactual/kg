@@ -1,0 +1,16 @@
+name: mc-manual-ctrl-g-clears-collection
+filename: mc-manclear.txt
+initial: |
+  foo bar
+  foo baz
+keys:
+  # collect a cursor, then C-g clears the collection; X goes only to the
+  # primary cursor (single-cursor editing resumes).
+  - C-c
+  - m
+  - c
+  - C-g
+  - X
+expected_saved: |
+  Xfoo bar
+  foo baz

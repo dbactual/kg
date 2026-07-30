@@ -126,6 +126,36 @@ static void editor_quit(int fd)
 
 /* Process events arriving from the standard input, which is, the user
  * is typing stuff on the terminal. */
+/* Keys that merely move point.  While the user is collecting multiple
+ * cursors (C-c m c), only these keep collection mode alive; any other
+ * key flips to edit mode and runs in parallel.  Prefix starters (C-x,
+ * C-c, ESC, C-u) are handled before the check, so they never reach it
+ * as standalone keys. */
+static int mc_is_navigation(int c)
+{
+	switch (c) {
+	case CTRL_F: case CTRL_B: case CTRL_N: case CTRL_P:
+	case ARROW_LEFT: case ARROW_RIGHT: case ARROW_UP: case ARROW_DOWN:
+	case CTRL_A: case CTRL_E: case HOME_KEY: case END_KEY:
+	case ALT_F: case ALT_B:
+	case CTRL_ARROW_LEFT: case CTRL_ARROW_RIGHT:
+	case CTRL_ARROW_UP: case CTRL_ARROW_DOWN:
+	case ALT_ARROW_LEFT: case ALT_ARROW_RIGHT:
+	case ALT_ARROW_UP: case ALT_ARROW_DOWN:
+	case ALT_LBRACE: case ALT_RBRACE:
+	case ALT_LT: case ALT_GT:
+	case CTRL_HOME: case CTRL_END:
+	case CTRL_PAGE_UP: case CTRL_PAGE_DOWN:
+	case PAGE_UP: case PAGE_DOWN: case CTRL_V: case ALT_V:
+	case CTRL_L:                    /* recenter */
+	case CTRL_S: case CTRL_R:       /* isearch moves point */
+	case ALT_G:                     /* goto line */
+	case ALT_M: case ALT_R:         /* indentation / window-line */
+		return 1;
+	}
+	return 0;
+}
+
 void editor_process_keypress(int fd)
 {
 	struct timeval tv;
@@ -212,6 +242,7 @@ void editor_process_keypress(int fd)
 	if (editor.mc_prefix) {
 		editor.mc_prefix = 0;
 		switch (c) {
+		case 'c':              editor_mc_add_here();     break;  /* add cursor at point */
 		case 'n':              editor_mc_mark_next();    break;  /* next occurrence */
 		case 'a':              editor_mc_mark_all();     break;  /* all occurrences */
 		case 'j': case CTRL_N: editor_mc_cursor_below(); break;  /* cursor below */
@@ -429,6 +460,16 @@ void editor_process_keypress(int fd)
 	if (c != CTRL_Y && c != ALT_Y)
 		editor.yank_active = 0;
 
+	/* Multiple-cursor collection: any non-navigation key (except C-g,
+	 * which cancels) ends collection and begins parallel editing.  The
+	 * key itself then dispatches normally -- and, now that mc_active()
+	 * is true, the parallel commands pick it up. */
+	if (mc_collecting() && c != CTRL_G && !mc_is_navigation(c)) {
+		editor.mc_editing = 1;
+		editor_set_status_message("MC editing (%d cursors)",
+					  editor.mc_count);
+	}
+
 	/* Shift+motion: drop the mark at the current position the first
 	 * time the user starts a shift-selected region, so subsequent
 	 * shift+motion extends it.  If a region is already on-screen we
@@ -508,7 +549,7 @@ void editor_process_keypress(int fd)
 		while (n--) editor_move_cursor(ARROW_RIGHT);
 		break;
 	case CTRL_G:        /* Keyboard quit / cancel */
-		if (mc_active()) {
+		if (editor.mc_count > 0 || editor.mc_editing) {
 			mc_clear();
 			break;
 		}

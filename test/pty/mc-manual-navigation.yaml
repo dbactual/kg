@@ -1,0 +1,25 @@
+name: mc-manual-navigation-stays-collecting
+filename: mc-mannav.txt
+initial: |
+  one
+  two
+  three
+keys:
+  # collect at (0,0), navigate down two lines, collect at (2,0).  More
+  # navigation (C-p back up a line) must NOT begin editing and must NOT
+  # move the collected cursors.  Then Z begins editing: it lands at the
+  # two collected spots plus the current position (line 1).
+  - C-c
+  - m
+  - c
+  - C-n
+  - C-n
+  - C-c
+  - m
+  - c
+  - C-p
+  - Z
+expected_saved: |
+  Zone
+  Ztwo
+  Zthree

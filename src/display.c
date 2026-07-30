@@ -239,14 +239,17 @@ static void draw_window_rows(struct abuf *ab,
 			hl = r->hl    + coloff;
 
 			/* Multiple cursors: paint each secondary cursor's cell on
-			 * this row with the vivid match face so it reads as a live
-			 * cursor.  Overwrite hl[] in place, then restore after the
-			 * draw (the array belongs to the buffer, not the frame). */
+			 * this row with the match face -- vivid magenta while
+			 * editing, dim teal while still collecting.  Overwrite hl[]
+			 * in place, then restore after the draw (the array belongs
+			 * to the buffer, not the frame). */
 			int mc_ov_idx[MC_MAX];
 			unsigned char mc_ov_saved[MC_MAX];
 			int mc_ov_n = 0;
 			if (editor.mc_count > 0) {
 				int mi;
+				int mc_face = editor.mc_editing
+					? HL_MATCH_CURRENT : HL_MATCH;
 				for (mi = 0; mi < editor.mc_count; mi++) {
 					int rc, bc;
 					if (editor.mc_row[mi] != fr) continue;
@@ -257,7 +260,7 @@ static void draw_window_rows(struct abuf *ab,
 					if (mc_ov_n >= MC_MAX) break;
 					mc_ov_idx[mc_ov_n] = rc - coloff;
 					mc_ov_saved[mc_ov_n] = hl[rc - coloff];
-					hl[rc - coloff] = HL_MATCH_CURRENT;
+					hl[rc - coloff] = mc_face;
 					mc_ov_n++;
 				}
 			}

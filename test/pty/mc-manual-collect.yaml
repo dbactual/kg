@@ -1,0 +1,29 @@
+name: mc-manual-collect-then-type
+filename: mc-manual.txt
+initial: |
+  aaa bbb
+  ccc ddd
+  eee fff
+keys:
+  # C-c m c collects a cursor at (0,0).  Navigate freely (C-n x2, C-f
+  # x4 -- navigation keeps collecting, single cursor).  C-c m c collects
+  # (2,4).  Typing X flips to edit mode and inserts at every cursor:
+  # the two collected spots plus the current position (which is the
+  # second collected spot, so dedup leaves two distinct cursors).
+  - C-c
+  - m
+  - c
+  - C-n
+  - C-n
+  - C-f
+  - C-f
+  - C-f
+  - C-f
+  - C-c
+  - m
+  - c
+  - X
+expected_saved: |
+  Xaaa bbb
+  ccc ddd
+  eee Xfff

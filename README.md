@@ -113,9 +113,13 @@ Each entry lists the key bindings or commands affected.
 - Shift-select and the CUA clipboard trio (Shift-Delete / Ctrl-Insert
   / Shift-Insert) alongside the Emacs C-w / M-w / C-y
 - Rectangle commands (C-x SPC, C-x r {k,y,d,c,t})
-- Multiple cursors: parallel editing at several positions (C-c m {n,a}
-marks next/all occurrences of the word at point, C-c m {j,k} adds a
-cursor on the line below/above, C-g clears).  Typing, Backspace, RET,
+- Multiple cursors: parallel editing at several positions.  Manual
+workflow: C-c m c drops a cursor at point and enters collection mode --
+navigate freely (only navigation keys keep collecting), C-c m c again
+for each further spot, and the first non-navigation key begins parallel
+editing.  Auto-select: C-c m {n,a} marks next/all occurrences of the
+word at point, C-c m {j,k} adds a cursor on the line below/above (these
+begin editing immediately).  C-g clears.  Typing, Backspace, RET,
 movement, and C-y yank apply at every cursor; one C-_ undoes the whole
 stroke.  See docs/plans/multiple-cursors.md.
 - Incremental search and query-replace (M-%)

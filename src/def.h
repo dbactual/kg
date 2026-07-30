@@ -327,6 +327,7 @@ struct editor_config {
 	int mc_count;       /* Number of secondary cursors (0 = MC off). */
 	int mc_row[MC_MAX]; /* Secondary cursor rows (buffer-absolute). */
 	int mc_col[MC_MAX]; /* Secondary cursor byte columns. */
+	int mc_editing;     /* 1 = parallel editing live; 0 = still collecting. */
 };
 
 /* Append buffer for efficient screen rendering */
@@ -424,6 +425,7 @@ struct editor_buffer {
 	int mc_count;           /* Secondary cursors, saved with the buffer. */
 	int mc_row[MC_MAX];
 	int mc_col[MC_MAX];
+	int mc_editing;
 };
 
 /* Global editor state */
@@ -739,7 +741,10 @@ void editor_string_rect(int fd);
 
 /* Multiple cursors (mc.c) */
 int  mc_active(void);
+int  mc_collecting(void);
 void mc_clear(void);
+void editor_mc_add_here(void);
+void editor_mc_begin(void);
 void editor_mc_mark_next(void);
 void editor_mc_mark_all(void);
 void editor_mc_cursor_below(void);

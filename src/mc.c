@@ -20,15 +20,26 @@
 
 #include "def.h"
 
+/* Parallel editing is live only once the user says "begin" (or used an
+ * auto-select command).  While collecting, movement and typing stay
+ * single-cursor so the user can navigate freely between adds. */
 int mc_active(void)
 {
-	return editor.mc_count > 0;
+	return editor.mc_count > 0 && editor.mc_editing;
+}
+
+/* Nonzero when cursors are collected but editing has not begun: they
+ * render (dim face) but no command runs in parallel. */
+int mc_collecting(void)
+{
+	return editor.mc_count > 0 && !editor.mc_editing;
 }
 
 void mc_clear(void)
 {
-	if (editor.mc_count > 0) {
+	if (editor.mc_count > 0 || editor.mc_editing) {
 		editor.mc_count = 0;
+		editor.mc_editing = 0;
 		editor_set_status_message("Cursors cleared");
 	}
 }
@@ -68,6 +79,29 @@ static int mc_add(int row, int col)
 	return 1;
 }
 
+/* Add the primary cursor's current position to the collection WITHOUT
+ * skipping it (mc_add refuses positions equal to the primary, which is
+ * right for the auto-select commands but wrong here: the whole point of
+ * add-here is to record where point is).  Returns 1 when added. */
+static int mc_add_here_pos(void)
+{
+	int row = editor.rowoff + editor.cy;
+	int col = editor.coloff + editor.cx;
+	int i;
+
+	if (row < 0 || row >= editor.numrows) return 0;
+	if (col > editor.row[row].size) col = editor.row[row].size;
+	if (col < 0) col = 0;
+	for (i = 0; i < editor.mc_count; i++)
+		if (editor.mc_row[i] == row && editor.mc_col[i] == col)
+			return 0;
+	if (editor.mc_count >= MC_MAX) return 0;
+	editor.mc_row[editor.mc_count] = row;
+	editor.mc_col[editor.mc_count] = col;
+	editor.mc_count++;
+	return 1;
+}
+
 /* Remove duplicate positions (keep first occurrence). */
 static void mc_dedupe(void)
 {
@@ -93,15 +127,22 @@ static void mc_dedupe(void)
  * within the sorted arrays.  Returns the total count. */
 static int mc_build_sorted(int *rows, int *cols, int *out_primary_idx)
 {
-	int n = editor.mc_count + 1;
+	int n;
 	int pr = editor.rowoff + editor.cy;
 	int pc = editor.coloff + editor.cx;
 	int i, j;
 
+	n = 1;
 	rows[0] = pr; cols[0] = pc;
 	for (i = 0; i < editor.mc_count; i++) {
-		rows[i+1] = editor.mc_row[i];
-		cols[i+1] = editor.mc_col[i];
+		/* The primary participates in the edit as itself; skip any
+		 * collected cursor sitting at the same spot, or the edit
+		 * would run twice there. */
+		if (editor.mc_row[i] == pr && editor.mc_col[i] == pc)
+			continue;
+		rows[n] = editor.mc_row[i];
+		cols[n] = editor.mc_col[i];
+		n++;
 	}
 	/* Insertion sort descending. */
 	for (i = 1; i < n; i++) {
@@ -610,6 +651,22 @@ static void mc_topmost(int *row, int *col)
 	}
 }
 
+/* C-c m c: drop a cursor at point and enter (or stay in) collection
+ * mode.  In collection mode only navigation keys keep collecting; any
+ * other key flips to edit mode (handled in kbd.c).  Pressing add while
+ * editing drops back to collection so the user can reposition and add
+ * more; editing resumes on the next non-navigation key. */
+void editor_mc_add_here(void)
+{
+	if (mc_add_here_pos()) {
+		editor.mc_editing = 0;   /* (back to) collection mode */
+		editor_set_status_message("Cursor %d added (navigate, C-c m c to add, any edit key to begin)",
+					  editor.mc_count);
+	} else {
+		editor_set_status_message("Already a cursor here");
+	}
+}
+
 void editor_mc_cursor_below(void)
 {
 	int pr, pc;
@@ -618,8 +675,10 @@ void editor_mc_cursor_below(void)
 	if (pr + 1 < editor.numrows) {
 		int col = pc;
 		if (col > editor.row[pr+1].size) col = editor.row[pr+1].size;
-		mc_add(pr + 1, col);
-		editor_set_status_message("MC:%d", editor.mc_count + 1);
+		if (mc_add(pr + 1, col)) {
+			editor.mc_editing = 1;   /* auto-select edits immediately */
+			editor_set_status_message("MC:%d", editor.mc_count + 1);
+		}
 	}
 }
 
@@ -631,8 +690,10 @@ void editor_mc_cursor_above(void)
 	if (pr > 0) {
 		int col = pc;
 		if (col > editor.row[pr-1].size) col = editor.row[pr-1].size;
-		mc_add(pr - 1, col);
-		editor_set_status_message("MC:%d", editor.mc_count + 1);
+		if (mc_add(pr - 1, col)) {
+			editor.mc_editing = 1;
+			editor_set_status_message("MC:%d", editor.mc_count + 1);
+		}
 	}
 }
 
@@ -692,10 +753,12 @@ void editor_mc_mark_next(void)
 	 * first one. */
 	mc_furthest(&from_row, &from_col);
 
-	if (mc_mark_occurrence(word, wlen, from_row, from_col, 0))
+	if (mc_mark_occurrence(word, wlen, from_row, from_col, 0)) {
+		editor.mc_editing = 1;
 		editor_set_status_message("MC:%d", editor.mc_count + 1);
-	else
+	} else {
 		editor_set_status_message("No more occurrences");
+	}
 }
 
 void editor_mc_mark_all(void)
@@ -724,8 +787,10 @@ void editor_mc_mark_all(void)
 			}
 		}
 	}
-	if (n > 0)
+	if (n > 0) {
+		editor.mc_editing = 1;
 		editor_set_status_message("MC:%d", editor.mc_count + 1);
-	else
+	} else {
 		editor_set_status_message("No other occurrences");
+	}
 }

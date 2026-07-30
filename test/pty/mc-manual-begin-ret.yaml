@@ -1,0 +1,21 @@
+name: mc-manual-implicit-begin-on-ret
+filename: mc-manret.txt
+initial: |
+  aaa bbb
+  ccc ddd
+keys:
+  # collect on both lines, then RET (a non-navigation key) implicitly
+  # begins editing and splits both lines at col 0.
+  - C-c
+  - m
+  - c
+  - C-n
+  - C-c
+  - m
+  - c
+  - RET
+expected_saved: |
+
+  aaa bbb
+
+  ccc ddd
