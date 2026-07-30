@@ -5,24 +5,13 @@
 
 #define ABUF_INIT {NULL,0}
 
-/* Welcome banner shown on an empty buffer.  An apothecary's cylindrical
- * brass knob weight stamped with a lower-case "kg", drawn with Unicode
- * box-drawing characters, with a small slogan to its right.  Every row
- * is padded to KG_LOGO_COLS visual columns so the whole block centres
- * at the same column. */
+/* Welcome banner shown on an empty buffer: just "meg", centred on the
+ * screen. */
 static const char *kg_logo[] = {
-	"   ╭────╮    ",
-	"   ╰╮  ╭╯    ",
-	"╭───╯  ╰───╮ ",
-	"│          │ ",
-	"│  │       │ ",
-	"│  │╱ ╭─╮  │ ",
-	"│  │╲ ╰─┤  │ ",
-	"│     ╰─╯  │ ",
-	"╰──────────╯ ",
+	"meg",
 };
 #define KG_LOGO_LINES ((int)(sizeof(kg_logo) / sizeof(kg_logo[0])))
-#define KG_LOGO_COLS  32
+#define KG_LOGO_COLS  3
 
 void ab_append(struct abuf *ab, const char *s, int len)
 {
